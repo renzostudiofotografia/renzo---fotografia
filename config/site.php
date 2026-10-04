@@ -1,0 +1,103 @@
+<?php
+
+return [
+    'brand' => 'Renzo Nuñes Melgar',
+    'email' => 'info@renzonuñesmelgar.com',
+    'phone_display' => '+51 900 000 000',
+    'phone_link' => '51900000000',
+    'location' => 'Arequipa, Perú',
+
+    'services' => [
+        'wedding' => [
+            'slug' => 'cobertura-boda',
+            'number' => '01',
+            'tag' => 'Experiencia Principal',
+            'title' => 'Documental de Boda',
+            'summary' => 'Cobertura completa e íntima del gran día. Capturamos la narrativa real desde los preparativos hasta el último baile.',
+            'hero' => 'Una narrativa completa, honesta y emotiva del día más importante. Desde los silencios de la mañana hasta la euforia de la fiesta.',
+            'intro_title' => 'Tu historia contada sin poses forzadas',
+            'paragraphs' => [
+                'Mi objetivo el día de la boda es registrar la atmósfera real. Me enfoco en la luz natural, la espontaneidad y los detalles que hacen único su compromiso: las miradas de nerviosismo previo, los abrazos sinceros y la complicidad de la pareja.',
+                'Combino una visión editorial para los retratos con la sutileza del fotoperiodismo para capturar instantes imprevistos con absoluta elegancia.',
+            ],
+            'image' => 'assets/images/services/wedding-documentary.webp',
+            'image_alt' => 'Fotografía documental de boda',
+            'includes_title' => '¿Qué incluye la experiencia de boda?',
+            'includes' => [
+                ['label' => 'Cobertura continua', 'text' => 'Preparativos, ceremonia, cóctel, retratos de pareja y recepción.'],
+                ['label' => 'Adelanto exclusivo', 'text' => 'Selección de 25 a 30 fotografías editadas en alta calidad, entregadas en 48 horas.'],
+                ['label' => 'Galería privada online', 'text' => 'Espacio protegido para ver, compartir y descargar las fotografías en máxima resolución.'],
+                ['label' => 'Edición editorial', 'text' => 'Revelado profesional y corrección de color individual para cada imagen.'],
+                ['label' => 'Planificación', 'text' => 'Reuniones previas para revisar la cronología y afinar cada detalle.'],
+            ],
+            'cta_title' => '¿Tienen definida la fecha de su boda?',
+            'cta_text' => 'Las fechas suelen reservarse con meses de anticipación. Verifiquemos si su día está libre en mi agenda.',
+            'cta_label' => 'Consultar disponibilidad',
+        ],
+        'prewedding' => [
+            'slug' => 'preboda',
+            'number' => '02',
+            'tag' => 'Conexión & Autenticidad',
+            'title' => 'Sesiones Preboda',
+            'summary' => 'Una experiencia relajada y auténtica antes del gran día, perfecta para conectar con la cámara en un entorno especial.',
+            'hero' => 'Una experiencia relajada e íntima previa al gran día. Perfecta para romper el hielo con la cámara y crear recuerdos naturales en su lugar favorito.',
+            'intro_title' => 'Conectando antes de decir “Acepto”',
+            'paragraphs' => [
+                'La sesión preboda es el pretexto perfecto para pasar un momento a solas, caminar tranquilos y disfrutar sin el itinerario estricto del día de la boda.',
+                'Esta experiencia nos ayuda a generar la confianza ideal para que, en la boda, se sientan completamente cómodos frente al lente.',
+            ],
+            'image' => 'assets/images/services/prewedding.webp',
+            'image_alt' => 'Sesión preboda editorial',
+            'includes_title' => '¿Qué incluye la sesión preboda?',
+            'includes' => [
+                ['label' => 'Duración', 'text' => 'Entre 2 y 3 horas de sesión al atardecer o al amanecer.'],
+                ['label' => 'Locación a elección', 'text' => 'Paisajes naturales, entorno urbano o lugares con valor sentimental.'],
+                ['label' => 'Cambios de vestuario', 'text' => 'Asesoría de estilo y paleta de color para lograr armonía visual.'],
+                ['label' => 'Entrega digital', 'text' => 'Galería online con más de 60 fotografías optimizadas en alta calidad.'],
+            ],
+            'cta_title' => '¿Quieren planear su sesión preboda?',
+            'cta_text' => 'Escojamos la locación perfecta y capturemos su esencia juntos.',
+            'cta_label' => 'Agendar sesión',
+        ],
+        'postwedding' => [
+            'slug' => 'postboda',
+            'number' => '03',
+            'tag' => 'Arte sin Prisas',
+            'title' => 'Elopements & Destino',
+            'summary' => 'Fotografía para bodas íntimas o celebraciones en destinos únicos, enfocada en la esencia salvaje y personal de la pareja.',
+            'hero' => 'Vuelvan a vestirse de novios sin la presión del tiempo ni el protocolo. Una oportunidad para crear retratos artísticos en escenarios espectaculares.',
+            'intro_title' => 'Magia pura en destinos épicos',
+            'paragraphs' => [
+                'Una sesión postboda nos da libertad para viajar a montañas, playas salvajes o lugares históricos con la mejor luz del atardecer.',
+                'Sin miedo a ensuciar el vestido o despeinarse, nos enfocamos por completo en la parte más visual y artística de su unión.',
+            ],
+            'image' => 'assets/images/services/elopement.webp',
+            'image_alt' => 'Boda íntima y sesión de destino',
+            'includes_title' => '¿Qué incluye la experiencia de destino?',
+            'includes' => [
+                ['label' => 'Itinerario flexible', 'text' => 'Búsqueda de las mejores horas de luz, desde la hora dorada hasta la hora azul.'],
+                ['label' => 'Destino a elección', 'text' => 'Disponibilidad para viajar dentro del Perú o al extranjero.'],
+                ['label' => 'Garantía artística', 'text' => 'Fotografías con tratamiento de color de nivel editorial.'],
+                ['label' => 'Galería privada', 'text' => 'Entrega completa en plataforma digital para descargas e impresiones.'],
+            ],
+            'cta_title' => '¿Listos para una aventura fotográfica?',
+            'cta_text' => 'Creemos retratos inolvidables en un lugar que se sienta completamente suyo.',
+            'cta_label' => 'Cotizar experiencia',
+        ],
+    ],
+
+    'portfolio' => [
+        ['category' => 'wedding', 'tag' => 'Boda Editorial', 'names' => 'Camila & Sebastián', 'location' => 'Valle Sagrado, Cusco', 'image' => 'assets/images/portfolio/camila-sebastian.webp'],
+        ['category' => 'prewedding', 'tag' => 'Sesión Postboda', 'names' => 'Mariana & Diego', 'location' => 'Arequipa, Perú', 'image' => 'assets/images/portfolio/mariana-diego.webp'],
+        ['category' => 'elopement', 'tag' => 'Elopement', 'names' => 'Lucía & Mateo', 'location' => 'Máncora, Piura', 'image' => 'assets/images/portfolio/lucia-mateo.webp'],
+        ['category' => 'wedding', 'tag' => 'Boda Documental', 'names' => 'Valentina & Alejandro', 'location' => 'Lima, Perú', 'image' => 'assets/images/portfolio/valentina-alejandro.webp'],
+        ['category' => 'prewedding', 'tag' => 'Preboda al Atardecer', 'names' => 'Sofía & Gabriel', 'location' => 'Colca, Arequipa', 'image' => 'assets/images/portfolio/sofia-gabriel.webp'],
+        ['category' => 'elopement', 'tag' => 'Boda Destino', 'names' => 'Isabella & Thomas', 'location' => 'Paracas, Ica', 'image' => 'assets/images/portfolio/isabella-thomas.webp'],
+    ],
+
+    'testimonials' => [
+        ['quote' => 'Capturó cada lágrima, cada risa y la magia genuina de nuestro día. Ver las fotos por primera vez fue revivir exactamente cómo nos sentíamos. Sin poses forzadas, simplemente puro sentimiento.', 'names' => 'Camila & Sebastián', 'detail' => 'Boda en Valle Sagrado, Cusco'],
+        ['quote' => 'Su calma y elegancia durante toda la boda nos hicieron sentir cómodos desde el primer instante. Las fotografías parecen sacadas de una revista de arte. Superó todas nuestras expectativas.', 'names' => 'Mariana & Diego', 'detail' => 'Sesión Preboda & Boda, Arequipa'],
+        ['quote' => 'Logró retratar la esencia salvaje e íntima de nuestro elopement a la perfección. Cada imagen nos devuelve a ese paisaje y a todo lo que sentimos.', 'names' => 'Lucía & Mateo', 'detail' => 'Elopement en Máncora'],
+    ],
+];
