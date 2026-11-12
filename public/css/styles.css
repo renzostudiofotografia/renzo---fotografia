@@ -74,7 +74,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  max-width: 1100px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 1.1rem 2rem;
 }
@@ -97,6 +97,7 @@ body {
   text-transform: uppercase;
   color: #696868;
   text-decoration: none;
+  white-space: nowrap;
   transition: var(--color-principal) 0.3s ease;
 }
 
@@ -117,7 +118,7 @@ body {
   display: flex;
   list-style: none;
   align-items: center;
-  gap: 2rem;
+  gap: 1.25rem;
   margin: 0;
   padding: 0;
 }
@@ -125,6 +126,7 @@ body {
 .nav-link {
   font-family:  var(--fuente-cuerpo);
   text-decoration: none;
+  white-space: nowrap;
   color: #696868;
   font-size: 0.78rem;
   font-weight: 500;
@@ -217,81 +219,113 @@ body {
 /* --- SECCIÓN HERO REORGANIZADA --- */
 .hero {
   position: relative;
-  width: 100%;
+  width: 100vw;
+  max-width: none;
   height: calc(100vh - 65px); /* Resta la altura del header para un encuadre perfecto */
   min-height: 550px;
+  margin-inline: calc(50% - 50vw);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 0 1.5rem;
+  padding: 0;
+  isolation: isolate;
+  background-color: #0b0b0b;
 }
 
 /* Contenedor de diapositivas */
 .hero-slides {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+  inset: 0;
+  width: 100vw;
+  min-width: 100%;
   height: 100%;
+  overflow: hidden;
   z-index: 0;
 }
 
 /* Cada una de las 5 fotos */
 .hero-slide {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
   background-size: cover;
-  background-position: center;
+  background-position: center center;
   background-repeat: no-repeat;
   opacity: 0;
+  filter: saturate(1.06) contrast(1.03) brightness(1.04);
   
   /* Efecto de transición elegante: Fade in de 1.8s con zoom cinematográfico sutil */
   transition: opacity 1.8s cubic-bezier(0.4, 0, 0.2, 1), transform 7s ease-out;
-  transform: scale(1.08);
+  transform: scale(1.1);
+  will-change: opacity, transform;
 }
 
 /* Estado activo visible */
 .hero-slide.active {
   opacity: 1;
-  transform: scale(1);
+  transform: scale(1.025);
 }
 
 /* Capa semitransparente oscura */
 .hero-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.38);
+  inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, 0.12) 65%, rgba(0, 0, 0, 0.55) 100%);
   z-index: 1;
+  pointer-events: none;
 }
 
 /* Textos sobre las imágenes */
 .hero-content {
-  position: relative;
+  position: absolute;
+  left: clamp(1.5rem, 6vw, 6rem);
+  bottom: clamp(5rem, 10vh, 7rem);
   z-index: 2;
-  max-width: 800px;
+  width: min(32rem, calc(100% - 3rem));
   color: #ffffff;
+  text-align: left;
 }
 
 .hero-subtitle {
-  font-family: var(--fuente-cuerpo);
-  font-size: 0.85rem;
+  font-family: var(--fuente-titulo);
+  font-size: calc(clamp(1.35rem, 2.2vw, 2rem) * var(--title-scale, 1));
+  font-weight: 500;
+  line-height: 1.4;
   text-transform: uppercase;
-  letter-spacing: 4px;
-  color: var(--color-dorado);
-  margin-bottom: 1.2rem;
+  letter-spacing: 0.06em;
+  color: #e6c47e;
+  margin-bottom: 1.1rem;
+  text-wrap: balance;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85), 0 4px 20px rgba(0, 0, 0, 0.65);
+  transform-origin: left center;
+}
+
+@keyframes hero-text-breathe {
+  0%, 100% {
+    opacity: 0.6;
+    filter: blur(1.5px);
+    transform: scale(0.99);
+  }
+
+  14%, 82% {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-subtitle.is-animated {
+    animation: hero-text-breathe var(--hero-slide-duration, 7s) ease-in-out both;
+  }
 }
 
 .hero-title {
   font-family: var(--fuente-titulo);
-  font-size: 3.2rem;
+  font-size: calc(3.2rem * var(--title-scale, 1));
   font-weight: 400;
   line-height: 1.2;
   letter-spacing: 1px;
@@ -300,22 +334,38 @@ body {
 }
 
 .hero-btn {
-  display: inline-block;
-  padding: 0.85rem 2.2rem;
-  border: 1px solid var(--color-dorado);
-  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+  min-height: 44px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.94);
   text-decoration: none;
   font-family: var(--fuente-cuerpo);
   font-size: 0.75rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 2.5px;
-  transition: all 0.4s ease;
-  background-color: transparent;
+  letter-spacing: 2px;
+  transition: color 0.3s ease, border-color 0.3s ease;
 }
 
-.hero-btn:hover {
-  background-color: var(--color-dorado);
+.hero-btn::after {
+  content: "\2192";
+  font-size: 1rem;
+  letter-spacing: 0;
+  transition: transform 0.3s ease;
+}
+
+.hero-btn:hover,
+.hero-btn:focus-visible {
   color: #ffffff;
+  border-color: #ffffff;
+}
+
+.hero-btn:hover::after,
+.hero-btn:focus-visible::after {
+  transform: translateX(4px);
 }
 
 /* Indicadores / Puntos de navegación abajo */
@@ -346,7 +396,7 @@ body {
 }
 
 /* RESPONSIVE */
-@media (max-width: 768px) {
+@media (max-width: 1000px) {
   .hamburger {
     display: block;
   }
@@ -426,39 +476,24 @@ body {
     padding: 0.5rem 0;
   }
 
-  .hero-title {
-    font-size: 2rem;
-  }
-
   .hero-subtitle {
-    font-size: 0.75rem;
-    letter-spacing: 2.5px;
-  }
-  
-  .hero-btn {
-    padding: 0.7rem 1.5rem;
-  }
-
-  .hero {
-    background-attachment: scroll; /* Desactiva el parallax solo en móviles para evitar super zoom */
-    background-position: center center; /* Centra la foto perfectamente en pantallas verticales */
+    max-width: 100%;
+    font-size: calc(clamp(1.1rem, 4.3vw, 1.35rem) * var(--title-scale, 1));
+    letter-spacing: 0.06em;
   }
 
   .hero {
     height: calc(100vh - 60px);
+    min-height: 560px;
   }
 
-  .hero-title {
-    font-size: 2rem;
-  }
-
-  .hero-subtitle {
-    font-size: 0.75rem;
-    letter-spacing: 3px;
+  .hero-content {
+    left: 1.5rem;
+    bottom: 5rem;
   }
 
   .hero-btn {
-    padding: 0.75rem 1.6rem;
+    font-size: 0.72rem;
   }
 }
 
@@ -614,7 +649,7 @@ body {
 
 .about-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.4rem;
+  font-size: calc(2.4rem * var(--title-scale, 1));
   font-weight: 400;
   color: var(--color-principal);
   line-height: 1.25;
@@ -720,7 +755,7 @@ body {
   }
 
   .about-title {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--title-scale, 1));
   }
 
   .about-collage {
@@ -767,7 +802,7 @@ body {
 
 .services-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.5rem;
+  font-size: calc(2.5rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin-top: 0.5rem;
@@ -837,7 +872,7 @@ body {
 
 .service-card-title {
   font-family: var(--fuente-titulo);
-  font-size: 1.5rem;
+  font-size: calc(1.5rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin-bottom: 1rem;
@@ -888,7 +923,7 @@ body {
   }
 
   .services-title {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--title-scale, 1));
   }
 
   .service-img-wrapper {
@@ -915,7 +950,7 @@ body {
 
 .portfolio-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.5rem;
+  font-size: calc(2.5rem * var(--title-scale, 1));
   font-weight: 400;
   color: var(--color-principal);
   margin-top: 0.5rem;
@@ -980,7 +1015,7 @@ body {
 
 .portfolio-item-title {
   font-family: var(--fuente-titulo);
-  font-size: 1.8rem;
+  font-size: calc(1.8rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin-bottom: 0.4rem;
@@ -1083,7 +1118,7 @@ body {
   }
 
   .portfolio-title {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--title-scale, 1));
   }
 }
 
@@ -1109,7 +1144,7 @@ body {
 
 .testimonials-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.5rem;
+  font-size: calc(2.5rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin-top: 0.5rem;
@@ -1208,7 +1243,7 @@ body {
   }
 
   .testimonials-title {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--title-scale, 1));
   }
 
   .testimonial-text {
@@ -1255,7 +1290,7 @@ body {
 
 .cta-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.8rem;
+  font-size: calc(2.8rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   line-height: 1.25;
@@ -1323,7 +1358,7 @@ body {
   }
 
   .cta-title {
-    font-size: 2rem;
+    font-size: calc(2rem * var(--title-scale, 1));
   }
 
   .cta-description {
@@ -1524,7 +1559,7 @@ body {
 
 .page-title {
   font-family: var(--fuente-titulo);
-  font-size: 3rem;
+  font-size: calc(3rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin: 0.5rem 0 1rem 0;
@@ -1532,7 +1567,7 @@ body {
 
 .page-subtitle {
   font-family: var(--fuente-cuerpo);
-  font-size: 0.98rem;
+  font-size: calc(0.98rem * var(--title-scale, 1));
   color: #cccccc;
   line-height: 1.7;
   font-weight: 300;
@@ -1650,7 +1685,7 @@ body {
 
 .info-title {
   font-family: var(--fuente-titulo);
-  font-size: 1.6rem;
+  font-size: calc(1.6rem * var(--title-scale, 1));
   color: var(--color-principal);
   margin-bottom: 1rem;
   font-weight: 400;
@@ -1739,7 +1774,7 @@ body {
   }
 
   .page-title {
-    font-size: 2.2rem;
+    font-size: calc(2.2rem * var(--title-scale, 1));
   }
 
   .contact-form-wrapper {
@@ -1849,7 +1884,7 @@ body {
 
 .gallery-card-title {
   font-family: var(--fuente-titulo);
-  font-size: 1.7rem;
+  font-size: calc(1.7rem * var(--title-scale, 1));
   color: #ffffff;
   font-weight: 400;
   margin-bottom: 0.3rem;
@@ -1966,7 +2001,7 @@ body {
 
 .portfolio-cta-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.2rem;
+  font-size: calc(2.2rem * var(--title-scale, 1));
   color: #ffffff;
   font-weight: 400;
   margin-bottom: 0.8rem;
@@ -2035,7 +2070,7 @@ body {
 
 .about-hero-title {
   font-family: var(--fuente-titulo);
-  font-size: 3rem;
+  font-size: calc(3rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin: 0.5rem 0 1rem 0;
@@ -2044,7 +2079,7 @@ body {
 
 .about-hero-subtitle {
   font-family: var(--fuente-cuerpo);
-  font-size: 1.05rem;
+  font-size: calc(1.05rem * var(--title-scale, 1));
   line-height: 1.7;
   color: #e0e0e0;
   font-weight: 300;
@@ -2080,7 +2115,7 @@ body {
 
 .story-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.5rem;
+  font-size: calc(2.5rem * var(--title-scale, 1));
   color: var(--color-principal);
   font-weight: 400;
   margin-bottom: 2rem;
@@ -2116,7 +2151,7 @@ body {
 
 .pillars-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.5rem;
+  font-size: calc(2.5rem * var(--title-scale, 1));
   color: #ffffff;
   font-weight: 400;
   margin-top: 0.5rem;
@@ -2181,7 +2216,7 @@ body {
 
 .personal-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.4rem;
+  font-size: calc(2.4rem * var(--title-scale, 1));
   color: var(--color-principal);
   font-weight: 400;
   margin: 0.5rem 0 1.8rem 0;
@@ -2244,7 +2279,7 @@ body {
   }
 
   .about-hero-title {
-    font-size: 2.3rem;
+    font-size: calc(2.3rem * var(--title-scale, 1));
   }
 }
 
@@ -2264,7 +2299,7 @@ body {
 
 .service-detail-title {
   font-family: var(--fuente-titulo);
-  font-size: 3rem;
+  font-size: calc(3rem * var(--title-scale, 1));
   font-weight: 400;
   color: #ffffff;
   margin: 0.5rem 0 1rem 0;
@@ -2272,7 +2307,7 @@ body {
 
 .service-detail-subtitle {
   font-family: var(--fuente-cuerpo);
-  font-size: 1.05rem;
+  font-size: calc(1.05rem * var(--title-scale, 1));
   color: #cccccc;
   line-height: 1.7;
   font-weight: 300;
@@ -2300,7 +2335,7 @@ body {
 
 .service-section-title {
   font-family: var(--fuente-titulo);
-  font-size: 2.2rem;
+  font-size: calc(2.2rem * var(--title-scale, 1));
   color: var(--color-principal);
   font-weight: 400;
   margin-bottom: 1.5rem;
@@ -2338,7 +2373,7 @@ body {
 
 .includes-title {
   font-family: var(--fuente-titulo);
-  font-size: 1.8rem;
+  font-size: calc(1.8rem * var(--title-scale, 1));
   color: var(--color-principal);
   font-weight: 400;
   margin-bottom: 1.5rem;
@@ -2387,7 +2422,7 @@ body {
   }
 
   .service-detail-title {
-    font-size: 2.2rem;
+    font-size: calc(2.2rem * var(--title-scale, 1));
   }
 
   .service-includes-box {
@@ -2464,3 +2499,21 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+.site-logo-image { display:inline-block; width:auto; max-width:240px; max-height:48px; object-fit:contain; vertical-align:middle; }
+.booking-section { padding:6rem 1.5rem; background:var(--color-fondo); }
+.booking-container { max-width:1100px; margin:auto; }
+.booking-intro { max-width:650px; margin:0 auto 2.5rem; text-align:center; }
+.booking-title { font-family:var(--fuente-titulo); font-size:calc(clamp(1.8rem, 3vw, 2.7rem) * var(--title-scale, 1)); font-weight:400; color:var(--color-principal); margin:1rem 0; }
+.booking-intro p, .booking-empty p { line-height:1.8; font-size:1.1rem; }
+.booking-empty { max-width:650px; margin:auto; text-align:center; border:1px solid rgba(184,151,86,.25); padding:2.5rem; }
+.booking-empty .cta-btn { margin-top:1.5rem; }
+.booking-fallback { text-align:center; margin-top:1rem; }
+.booking-fallback a { color:var(--color-principal); }
+.editor-selecting [data-editor-section] { cursor:crosshair; outline:1px dashed #a9884f; outline-offset:-3px; }
+.editor-selecting [data-editor-section]:hover { outline:3px solid #a9884f; outline-offset:-3px; }
+@media(max-width:768px) { .booking-section { padding:4rem 1rem; } .booking-empty { padding:1.5rem; } .site-logo-image { max-width:180px; } }
+
+@media (min-width:769px) and (max-width:1100px) { .navbar { padding-inline:1.5rem; }.logo { font-size:1.15rem; }.nav-menu { gap:1rem; }.nav-link { font-size:.7rem;letter-spacing:1px; } }
+
+html.editor-preview { scroll-behavior:auto!important; }.editor-preview .editor-section-selected { outline:2px solid #b89756;outline-offset:-2px; }

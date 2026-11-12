@@ -2,7 +2,7 @@
 
 return [
     'brand' => 'Renzo Nuñes Melgar',
-    'email' => 'info@renzonuñesmelgar.com',
+    'email' => 'info@renzonunezmelgar.com',
     'phone_display' => '+51 900 000 000',
     'phone_link' => '51900000000',
     'location' => 'Arequipa, Perú',

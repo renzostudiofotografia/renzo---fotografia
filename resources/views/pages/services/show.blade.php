@@ -3,7 +3,7 @@
 @section('title', $service['title'])
 
 @section('content')
-<section class="service-detail-hero">
+<section class="service-detail-hero" data-editor-section="{{ $serviceSection }}">
     <div class="service-detail-hero-container">
         <p class="section-tag">{{ $service['tag'] }}</p>
         <h1 class="service-detail-title">{{ $service['title'] }}</h1>
@@ -11,7 +11,7 @@
     </div>
 </section>
 
-<section class="service-detail-body">
+<section class="service-detail-body" data-editor-section="{{ $serviceSection }}">
     <div class="service-detail-container">
         <div class="service-main-grid">
             <div class="service-main-text">
@@ -34,7 +34,7 @@
     </div>
 </section>
 
-<section class="portfolio-cta">
+<section class="portfolio-cta" data-editor-section="{{ $serviceSection }}">
     <div class="portfolio-cta-container">
         <h2 class="portfolio-cta-title">{{ $service['cta_title'] }}</h2>
         <p class="portfolio-cta-desc">{{ $service['cta_text'] }}</p>

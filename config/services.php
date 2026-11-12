@@ -2,6 +2,20 @@
 
 return [
 
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'token' => env('CLOUDFLARE_IMAGES_TOKEN'),
+    ],
+
+    'cloudflare_r2' => [
+        'account_id' => env('CLOUDFLARE_R2_ACCOUNT_ID'),
+        'bucket' => env('CLOUDFLARE_R2_BUCKET'),
+        'access_key_id' => env('CLOUDFLARE_R2_ACCESS_KEY_ID'),
+        'secret_access_key' => env('CLOUDFLARE_R2_SECRET_ACCESS_KEY'),
+        'public_url' => env('CLOUDFLARE_R2_PUBLIC_URL'),
+        'optimize' => env('CLOUDFLARE_R2_OPTIMIZE', false),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

@@ -22,10 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navMenu?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
     window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) closeMenu();
+        if (window.innerWidth > 1000) closeMenu();
     });
 
-    const initSlider = ({ slideSelector, dotSelector, interval = 6500 }) => {
+    const initSlider = ({ slideSelector, dotSelector, interval = 6500, onChange }) => {
         const slides = [...document.querySelectorAll(slideSelector)];
         const dots = [...document.querySelectorAll(dotSelector)];
         if (slides.length < 2 || slides.length !== dots.length) return;
@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 dot.classList.toggle('active', isActive);
                 dot.setAttribute('aria-pressed', String(isActive));
             });
+            onChange?.(interval);
         };
 
         const start = () => {
@@ -57,7 +58,30 @@ document.addEventListener('DOMContentLoaded', () => {
         start();
     };
 
-    initSlider({ slideSelector: '.hero-slide', dotSelector: '.hero-dots .dot', interval: 7000 });
+    const heroSubtitle = document.querySelector('.hero-subtitle');
+    const heroPhrases = heroSubtitle ? JSON.parse(heroSubtitle.dataset.phrases || '[]') : [];
+
+    const updateHeroPhrase = (duration) => {
+        if (!heroSubtitle) return;
+
+        const availablePhrases = heroPhrases.filter((phrase) => phrase !== heroSubtitle.textContent.trim());
+        heroSubtitle.textContent = availablePhrases.length
+            ? availablePhrases[Math.floor(Math.random() * availablePhrases.length)]
+            : (heroPhrases[0] || heroSubtitle.textContent);
+        heroSubtitle.style.setProperty('--hero-slide-duration', `${duration}ms`);
+        heroSubtitle.classList.add('is-animated');
+        heroSubtitle.getAnimations().forEach((animation) => {
+            animation.currentTime = 0;
+            animation.play();
+        });
+    };
+
+    initSlider({
+        slideSelector: '.hero-slide',
+        dotSelector: '.hero-dots .dot',
+        interval: Number(document.querySelector('.hero')?.dataset.interval || 7) * 1000,
+        onChange: updateHeroPhrase,
+    });
     initSlider({ slideSelector: '.testimonial-card', dotSelector: '.testimonial-dots .t-dot', interval: 8000 });
 
     const filterButtons = [...document.querySelectorAll('.filter-btn')];

@@ -2,18 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\SiteContent;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PageController extends Controller
 {
+    public function __construct(public SiteContent $site) {}
+
     public function home(): View
     {
         return view('pages.home', [
-            'portfolioItems' => config('site.portfolio'),
-            'services' => config('site.services'),
-            'testimonials' => config('site.testimonials'),
+            'portfolioItems' => $this->site->get('portfolio_items.items'),
+            'services' => $this->site->services(),
+            'testimonials' => $this->site->get('testimonials.items'),
         ]);
     }
 
@@ -25,32 +28,38 @@ class PageController extends Controller
     public function portfolio(): View
     {
         return view('pages.portfolio', [
-            'portfolioItems' => config('site.portfolio'),
+            'portfolioItems' => $this->site->get('portfolio_items.items'),
         ]);
     }
 
     public function services(): View
     {
         return view('pages.services.index', [
-            'services' => config('site.services'),
+            'services' => $this->site->services(),
         ]);
     }
 
     public function service(string $service): View
     {
-        $serviceData = collect(config('site.services'))
+        $serviceData = collect($this->site->services())
             ->firstWhere('slug', $service);
 
         abort_unless($serviceData, 404);
 
         return view('pages.services.show', [
             'service' => $serviceData,
+            'serviceSection' => 'service_'.collect(config('site.services'))->search(fn (array $item): bool => $item['slug'] === $service),
         ]);
     }
 
     public function contact(): View
     {
         return view('pages.contact');
+    }
+
+    public function booking(): View
+    {
+        return view('pages.booking');
     }
 
     public function submitContact(Request $request): RedirectResponse
