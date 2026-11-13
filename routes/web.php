@@ -32,9 +32,12 @@ Route::prefix('admin/landings')->name('admin.landings.')->middleware(['auth', 'c
         Route::post('/', 'store')->name('store');
         Route::get('/{landing}/edit', 'edit')->name('edit');
         Route::put('/{landing}', 'update')->name('update');
+        Route::delete('/{landing}', 'destroy')->name('destroy');
+        Route::post('/{landing}/restore', 'restore')->withTrashed()->name('restore');
         Route::match(['get', 'post'], '/{landing}/preview', 'preview')->name('preview');
         Route::post('/{landing}/publish', 'publish')->name('publish');
         Route::post('/{landing}/unpublish', 'unpublish')->name('unpublish');
+        Route::post('/{landing}/video', [AdminController::class, 'uploadLandingVideo'])->middleware('throttle:20,1')->name('video');
         Route::get('/{landing}/leads', 'leads')->name('leads');
     });
 

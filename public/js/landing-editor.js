@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingScroll = 0;
     let pendingSectionFocus = null;
     let device = 'desktop';
+    let videoUploading = false;
+    const videoUploadForm = document.querySelector('#landing-video-upload-form');
+    const videoUploadStatus = document.querySelector('#landing-video-upload-status');
+    const videoLibrary = document.querySelector('#landing-video-library');
 
     const resizePreview = () => {
         if (!stage.clientWidth || !stage.clientHeight) return;
@@ -108,7 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const markChanged = () => {
+    const markChanged = (event) => {
+        if (event?.target instanceof HTMLInputElement && event.target.form && event.target.form !== form) return;
         dirty = true;
         requestNumber++;
         controller?.abort();
@@ -123,14 +128,107 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('input', markChanged);
     form.addEventListener('change', markChanged);
-    form.addEventListener('submit', () => { dirty = false; });
+    form.addEventListener('submit', (event) => {
+        if (videoUploading) {
+            event.preventDefault();
+            videoUploadStatus.textContent = 'Espera a que termine la subida del video antes de guardar.';
+            videoUploadStatus.hidden = false;
+            return;
+        }
+        dirty = false;
+    });
     document.querySelector('#landing-publish-form').addEventListener('submit', (event) => {
-        if (dirty) event.preventDefault();
+        if (dirty || videoUploading) event.preventDefault();
     });
     window.addEventListener('beforeunload', (event) => {
-        if (!dirty) return;
+        if (!dirty && !videoUploading) return;
         event.preventDefault();
         event.returnValue = '';
+    });
+    document.addEventListener('landing:delete-confirmed', (event) => {
+        if (videoUploading) {
+            event.preventDefault();
+            videoUploadStatus.textContent = 'Espera a que termine la subida del video antes de eliminar la landing.';
+            videoUploadStatus.hidden = false;
+            return;
+        }
+        dirty = false;
+        clearTimeout(timer);
+        requestNumber++;
+        controller?.abort();
+    });
+
+    videoUploadForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (videoUploading) return;
+        const fileInput = videoUploadForm.elements.namedItem('video');
+        const video = fileInput.files[0];
+        if (!video) return;
+        videoUploadStatus.hidden = false;
+        videoUploadStatus.classList.remove('is-error');
+        if (video.size > Number(videoUploadForm.dataset.maxUploadBytes)) {
+            videoUploadStatus.textContent = `El video no debe superar ${videoUploadForm.dataset.maxUploadLabel}. Comprime el archivo o utiliza un enlace directo.`;
+            videoUploadStatus.classList.add('is-error');
+            return;
+        }
+        const body = new FormData(videoUploadForm);
+        const button = document.querySelector('#landing-video-upload-button');
+        const previousPublishDisabled = publishButton.disabled;
+        videoUploading = true;
+        publishButton.disabled = true;
+        button.disabled = true;
+        button.textContent = 'Subiendo video…';
+        fileInput.disabled = true;
+        videoUploadForm.setAttribute('aria-busy', 'true');
+        videoUploadStatus.textContent = 'Subiendo tu video. Puedes seguir editando mientras termina.';
+        try {
+            const response = await fetch(videoUploadForm.action, {
+                method: 'POST', body, credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const contentType = response.headers.get('content-type') || '';
+            const result = contentType.includes('application/json') ? await response.json() : {};
+            if (!response.ok || response.redirected) {
+                const validationMessage = Object.values(result.errors || {}).flat()[0];
+                throw new Error(validationMessage || (response.status === 413
+                    ? 'El servidor admite archivos más pequeños. Comprime el video o pega un enlace directo.'
+                    : response.status === 419 || response.status === 401 || response.redirected
+                        ? 'La sesión necesita renovarse. Conserva tus cambios antes de recargar.'
+                        : 'No se pudo subir el video. Vuelve a intentarlo o utiliza un enlace directo.'));
+            }
+            if (typeof result.url !== 'string' || !/^\/media\/\d+$/.test(result.url)) {
+                throw new Error('El servidor no devolvió un video válido. Inténtalo de nuevo.');
+            }
+            form.elements.namedItem('data[hero_video_url]').value = result.url;
+            form.elements.namedItem('data[hero_media]').value = 'video';
+            form.elements.namedItem('data[hero_video_url]').dispatchEvent(new Event('input', { bubbles: true }));
+            if (videoLibrary && ![...videoLibrary.options].some((option) => option.value === result.url)) {
+                videoLibrary.add(new Option(result.name || video.name, result.url));
+            }
+            if (videoLibrary) videoLibrary.value = result.url;
+            videoUploadStatus.textContent = result.warning || `Video «${result.name || video.name}» listo. Elige su miniatura y guarda el borrador.`;
+            fileInput.value = '';
+        } catch (error) {
+            videoUploadStatus.textContent = error.message || 'No pudimos conectar. Tu selección y tus cambios siguen aquí.';
+            videoUploadStatus.classList.add('is-error');
+        } finally {
+            videoUploading = false;
+            publishButton.disabled = dirty || previousPublishDisabled;
+            button.disabled = false;
+            button.textContent = 'Subir y usar este video ↑';
+            fileInput.disabled = false;
+            videoUploadForm.removeAttribute('aria-busy');
+        }
+    });
+
+    videoLibrary?.addEventListener('change', () => {
+        if (!/^\/media\/\d+$/.test(videoLibrary.value)) return;
+        form.elements.namedItem('data[hero_video_url]').value = videoLibrary.value;
+        form.elements.namedItem('data[hero_media]').value = 'video';
+        form.elements.namedItem('data[hero_video_url]').dispatchEvent(new Event('input', { bubbles: true }));
+        videoUploadStatus.textContent = 'Video de biblioteca seleccionado. Guarda el borrador para conservar el cambio.';
+        videoUploadStatus.hidden = false;
+        videoUploadStatus.classList.remove('is-error');
     });
 
     editor.querySelectorAll('[data-landing-device]').forEach((button) => {
@@ -159,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const index = [...details.parentElement.children].indexOf(details);
             target = `[data-landing-section="${index}"]`;
         } else if (details === group) {
-            const sectionTypes = { benefits: 'benefits', gallery: 'gallery', offer: 'offer', testimonials: 'testimonials', faqs: 'faq', conversion: 'lead' };
+            const sectionTypes = { media: 'hero', motion: 'hero', benefits: 'benefits', gallery: 'gallery', offer: 'offer', testimonials: 'testimonials', faqs: 'faq', conversion: 'lead' };
             const sectionType = sectionTypes[group.dataset.group];
             if (sectionType) target = `.section-${sectionType}`;
         }

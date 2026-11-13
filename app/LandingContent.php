@@ -34,6 +34,51 @@ class LandingContent
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function hydrate(array $data): array
+    {
+        return $this->hydrateFields($data, $this->fields(), config('landing.defaults'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @param  array<string, array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $defaults
+     * @return array<string, mixed>
+     */
+    private function hydrateFields(array $values, array $fields, array $defaults = []): array
+    {
+        foreach ($fields as $key => $field) {
+            if (! array_key_exists($key, $values)) {
+                $values[$key] = $defaults[$key] ?? $field['default'] ?? match ($field['type']) {
+                    'repeater' => [],
+                    'boolean' => false,
+                    default => '',
+                };
+            }
+            if ($field['type'] === 'repeater' && is_array($values[$key])) {
+                $values[$key] = array_map(fn (array $item): array => $this->hydrateFields($item, $field['fields']), $values[$key]);
+            }
+        }
+
+        return $values;
+    }
+
+    /** @param array<string, mixed> $data */
+    public function primaryButtonUrl(array $data): string
+    {
+        foreach ($data['sections'] as $section) {
+            if ($section['type'] === 'hero' && $section['enabled']) {
+                return $section['button_url'] ?: '#contacto';
+            }
+        }
+
+        return '#contacto';
+    }
+
+    /**
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
@@ -113,7 +158,8 @@ class LandingContent
                 'pixel' => ['nullable', 'string', 'regex:/^[0-9]{5,25}$/'],
                 'phone' => ['nullable', 'string', 'regex:/^[0-9]{7,15}$/'],
                 'image' => ['nullable', 'string', 'max:500', 'regex:#^(?:/?assets/images/[a-zA-Z0-9/_.-]+|/media/[0-9]+)$#'],
-                'link' => ['nullable', 'string', 'max:500', 'regex:#^(?:/(?!/)[a-zA-Z0-9/_?=&.%-]*|\#[a-zA-Z0-9_-]+|https://[^\s<>"\x27]+)$#'],
+                'video' => ['nullable', 'string', 'max:1000', 'regex:#^(?:/media/[0-9]+|https://[^\s<>"\x27]+)$#'],
+                'link' => ['nullable', 'string', 'max:500', 'regex:#^(?:/(?!/)[a-zA-Z0-9/_?=&.%-]*|\#[a-zA-Z0-9_-]+|https?://[^\s<>"\x27]+)$#'],
                 'repeater' => ['present', 'array', 'min:'.$field['min'], 'max:'.$field['max']],
                 default => ['nullable', 'string', 'max:'.($field['type'] === 'textarea' ? 5000 : 500)],
             };

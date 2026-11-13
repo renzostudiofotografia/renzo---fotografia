@@ -13,6 +13,8 @@
     </div>
 @elseif($field['type'] === 'image')
     <label class="field-caption">{{ $field['label'] }}</label><div class="image-control"><img src="{{ $value ? asset($value) : asset('assets/images/hero/hero-01.webp') }}" alt="Fotografía seleccionada" class="image-thumbnail {{ !$value ? 'placeholder-image' : '' }}"><input type="hidden" name="{{ $name }}" value="{{ $value }}"><div><button type="button" class="button quiet" data-pick-image>Elegir imagen</button><button type="button" class="text-button" data-clear-image>Quitar</button></div></div>
+@elseif($field['type'] === 'video')
+    <label class="field">{{ $field['label'] }}<input name="{{ $name }}" type="text" inputmode="url" value="{{ $value }}" maxlength="1000" placeholder="https://tu-dominio.com/video.mp4 o /media/123"></label>
 @elseif(in_array($field['type'], ['textarea', 'lines']))
     <label class="field">{{ $field['label'] }}<textarea name="{{ $name }}" rows="{{ $field['type'] === 'lines' ? 6 : 4 }}" maxlength="{{ $field['type'] === 'lines' ? 20000 : 5000 }}">{{ is_array($value) ? implode("\n", $value) : $value }}</textarea></label>
     @if($field['type'] === 'lines')<small class="field-help">Escribe un elemento en cada línea.</small>@endif
@@ -23,5 +25,6 @@
     <label class="field">{{ $field['label'] }}<input name="{{ $name }}" type="{{ $field['type'] === 'decimal' ? 'number' : (in_array($field['type'], ['color','number','email','url']) ? $field['type'] : ($field['type'] === 'calendly' ? 'url' : 'text')) }}" value="{{ $value }}" @if(in_array($field['type'], ['number','decimal'])) min="{{ $field['min'] }}" max="{{ $field['max'] }}" @endif @if($field['type'] === 'decimal') step="0.01" @endif @if(in_array($field['type'], ['number','decimal','color','font'])) required @endif @if($field['type'] === 'calendly') placeholder="https://calendly.com/tu-estudio/conversemos" @endif></label>
     @if($field['type'] === 'calendly')<small class="field-help">Pega el enlace público de tu evento. La disponibilidad se gestiona directamente en Calendly. Puedes dejarlo vacío mientras creas tu cuenta.</small>@endif
 @endif
+@if(!empty($field['help']))<small class="field-help">{{ $field['help'] }}</small>@endif
 @error($path)<span class="field-error">{{ $message }}</span>@enderror
 </div>

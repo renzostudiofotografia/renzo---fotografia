@@ -20,6 +20,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const deleteDialog = document.querySelector('#landing-delete-dialog');
+    const deleteForm = document.querySelector('#landing-delete-form');
+    const deleteError = deleteDialog?.querySelector('[data-delete-landing-error]');
+    let deleteTrigger = null;
+    document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-delete-landing]');
+        if (trigger && deleteDialog && deleteForm) {
+            deleteTrigger = trigger;
+            deleteForm.action = trigger.dataset.deleteUrl;
+            deleteForm.elements.namedItem('revision').value = trigger.dataset.deleteRevision;
+            deleteDialog.querySelector('[data-delete-landing-name]').textContent = trigger.dataset.deleteName;
+            deleteError.hidden = true;
+            deleteDialog.showModal();
+        }
+        if (event.target.closest('[data-cancel-landing-delete]')) deleteDialog?.close();
+    });
+    deleteDialog?.addEventListener('close', () => deleteTrigger?.focus({ preventScroll: true }));
+    deleteForm?.addEventListener('submit', (event) => {
+        if (!document.dispatchEvent(new CustomEvent('landing:delete-confirmed', { cancelable: true }))) {
+            event.preventDefault();
+            deleteError.textContent = 'Espera a que termine la subida del video antes de eliminar la landing.';
+            deleteError.hidden = false;
+            return;
+        }
+        const confirmButton = deleteForm.querySelector('[type="submit"]');
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Moviendo a papelera…';
+    });
+
     const picker = document.querySelector('#media-picker');
     let activeImageControl = null;
     document.addEventListener('click', (event) => {

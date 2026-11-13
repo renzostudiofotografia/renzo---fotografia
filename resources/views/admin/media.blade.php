@@ -1,9 +1,10 @@
 @extends('admin.layout')
-@section('title', 'Biblioteca de imágenes')
+@section('title', 'Biblioteca multimedia')
+@push('styles')<style>.media-card>video{display:block;width:100%;height:220px;object-fit:contain;background:#172019}</style>@endpush
 @section('content')
 <main class="page-padding">
     <div class="page-intro">
-        <div><span class="eyebrow">TU UNIVERSO VISUAL</span><h1>Imágenes que cuentan historias.</h1><p>Un solo lugar para tus fotografías. Elígelas después desde cualquier sección del editor.</p></div>
+        <div><span class="eyebrow">TU UNIVERSO VISUAL</span><h1>Imágenes que cuentan historias.</h1><p>Tus fotografías y videos en un solo lugar. Las fotografías se eligen desde el editor; los videos se añaden desde la portada multimedia de cada landing.</p></div>
         @if($r2Ready)
             <span class="connection-pill connected">● Cloudflare R2 configurado</span>
         @elseif($cloudflareReady)
@@ -21,7 +22,7 @@
         <div class="media-grid">
             @foreach($assets as $asset)
                 <article class="media-card">
-                    <img src="{{ route('media.show', $asset) }}" alt="{{ $asset->alt }}" loading="lazy">
+                    @if(str_starts_with($asset->mime_type, 'video/'))<video controls playsinline preload="metadata" aria-label="{{ $asset->name }}"><source src="{{ route('media.show', $asset) }}" type="{{ $asset->mime_type }}">Tu navegador no puede reproducir este video.</video>@else<img src="{{ route('media.show', $asset) }}" alt="{{ $asset->alt }}" loading="lazy">@endif
                     <div class="media-card-body">
                         <span class="asset-provider">{{ match ($asset->provider) {
                             'r2' => 'CLOUDFLARE R2',
@@ -40,7 +41,7 @@
                                 @csrf
                                 <button class="text-button" type="submit">Enviar a R2 ↗</button>
                             </form>
-                        @elseif($asset->provider === 'local' && $cloudflareReady)
+                        @elseif($asset->provider === 'local' && $cloudflareReady && str_starts_with($asset->mime_type, 'image/'))
                             <form action="{{ route('admin.media.cloudflare', $asset) }}" method="POST">
                                 @csrf
                                 <button class="text-button" type="submit">Enviar a Cloudflare ↗</button>

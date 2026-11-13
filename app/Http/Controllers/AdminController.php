@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\CloudflareImages;
 use App\CloudflareR2;
+use App\Models\LandingPage;
 use App\Models\MediaAsset;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\SiteContent;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -230,8 +232,50 @@ class AdminController extends Controller
         return back()->with('status', 'Los datos de la fotografía se actualizaron.');
     }
 
+    public function uploadLandingVideo(Request $request, LandingPage $landing): JsonResponse|RedirectResponse
+    {
+        $request->validate([
+            'video' => ['required', 'file', 'mimetypes:video/mp4,video/webm', 'mimes:mp4,webm', 'extensions:mp4,webm', 'max:51200'],
+        ], [
+            'video.required' => 'Selecciona un video MP4 o WebM.',
+            'video.mimetypes' => 'El archivo debe ser un video MP4 o WebM válido.',
+            'video.mimes' => 'El archivo debe ser un video MP4 o WebM válido.',
+            'video.extensions' => 'El archivo debe tener extensión .mp4 o .webm.',
+            'video.max' => 'El video no debe superar los 50 MB.',
+            'video.uploaded' => 'El servidor no pudo recibir el video. Comprueba su tamaño o utiliza un enlace directo.',
+        ]);
+        $video = $request->file('video');
+        $path = $video->store('site-media', 'local');
+        abort_unless($path, 500, 'No se pudo guardar el video.');
+        $asset = MediaAsset::create([
+            'name' => mb_substr($video->getClientOriginalName(), 0, 200),
+            'alt' => '', 'provider' => 'local', 'path' => $path,
+            'mime_type' => $video->getMimeType(), 'size' => $video->getSize(),
+        ]);
+        $warning = null;
+        if ($this->r2->configured()) {
+            try {
+                $this->r2->upload($asset);
+            } catch (\Throwable $exception) {
+                report($exception);
+                $warning = 'El video quedó guardado localmente. Puedes reintentar el envío a R2 desde la biblioteca.';
+            }
+        }
+        if ($request->expectsJson()) {
+            return response()->json([
+                'id' => $asset->id, 'url' => '/media/'.$asset->id, 'name' => $asset->name,
+                'warning' => $warning,
+            ], 201);
+        }
+
+        return back()->with('status', $warning ?? 'Video guardado. Ya puedes usarlo en la portada de tu landing.');
+    }
+
     public function sendToCloudflare(MediaAsset $asset): RedirectResponse
     {
+        if (! str_starts_with($asset->mime_type, 'image/')) {
+            throw ValidationException::withMessages(['image' => 'Cloudflare Images admite fotografías. Los videos pueden almacenarse localmente o en Cloudflare R2.']);
+        }
         try {
             $this->cloudflare->upload($asset);
         } catch (ConnectionException $exception) {
@@ -292,7 +336,7 @@ class AdminController extends Controller
             'url' => 'assets/images/'.str_replace('\\', '/', $file->getRelativePathname()),
             'name' => $file->getFilename(), 'provider' => 'Original',
         ])->values()->all();
-        $uploads = MediaAsset::latest()->get()->map(fn (MediaAsset $asset): array => [
+        $uploads = MediaAsset::where('mime_type', 'like', 'image/%')->latest()->get()->map(fn (MediaAsset $asset): array => [
             'url' => '/media/'.$asset->id, 'name' => $asset->name,
             'provider' => match ($asset->provider) {
                 'r2' => 'Cloudflare R2',

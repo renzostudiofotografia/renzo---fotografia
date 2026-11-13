@@ -2,6 +2,17 @@
     $fonts = config('editor.fonts');
     $fontFamilies = array_unique([$fonts[$data['heading_font']], $fonts[$data['body_font']]]);
     $leadSection = collect($data['sections'])->first(fn (array $section): bool => $section['type'] === 'lead' && $section['enabled']);
+    $primaryButtonUrl = app(\App\LandingContent::class)->primaryButtonUrl($data);
+    $hasPrimaryDestination = $leadSection || $primaryButtonUrl !== '#contacto';
+    $heroSection = collect($data['sections'])->first(fn (array $section): bool => $section['type'] === 'hero' && $section['enabled']);
+    $heroImages = collect($data['hero_images'])->filter(fn (array $image): bool => filled($image['image']))->values();
+    if ($heroImages->isEmpty() && !empty($heroSection['image'])) { $heroImages->push(['image' => $heroSection['image'], 'alt' => $heroSection['alt']]); }
+    $galleryImages = collect($data['gallery'])->filter(fn (array $image): bool => filled($image['image']))->values();
+    $testimonials = collect($data['testimonials'])->filter(fn (array $testimonial): bool => filled($testimonial['quote']))->values();
+    $heroPoster = $data['hero_video_poster'] ?: ($heroSection['image'] ?? '');
+    $shareImage = $data['share_image'] ?: ($data['hero_media'] === 'video' ? $heroPoster : ($data['hero_media'] === 'carousel' ? ($heroImages->first()['image'] ?? '') : ($heroSection['image'] ?? '')));
+    $shareImageAlt = $heroSection['alt'] ?? $data['brand_name'];
+    $heroLayout = in_array($data['hero_media'], ['flyer', 'video']) ? 'split' : $data['hero_layout'];
     $conversion = session('landing_conversion');
     $trackingConfiguration = [
         'preview' => $preview,
@@ -28,8 +39,11 @@
     <meta property="og:title" content="{{ $data['page_title'] }}">
     <meta property="og:description" content="{{ $data['meta_description'] }}">
     <meta property="og:type" content="website">
-    @php $heroImage = collect($data['sections'])->first(fn (array $section): bool => $section['type'] === 'hero' && $section['enabled']); @endphp
-    @if(!empty($heroImage['image']))<meta property="og:image" content="{{ asset($heroImage['image']) }}">@endif
+    @if($shareImage)<meta property="og:image" content="{{ asset($shareImage) }}"><meta property="og:image:alt" content="{{ $shareImageAlt }}">@endif
+    <meta name="twitter:card" content="{{ $shareImage ? 'summary_large_image' : 'summary' }}">
+    <meta name="twitter:title" content="{{ $data['page_title'] }}">
+    <meta name="twitter:description" content="{{ $data['meta_description'] }}">
+    @if($shareImage)<meta name="twitter:image" content="{{ asset($shareImage) }}"><meta name="twitter:image:alt" content="{{ $shareImageAlt }}">@endif
     <meta name="theme-color" content="{{ $data['background_color'] }}">
     <title>{{ $data['page_title'] }}</title>
     <link rel="icon" href="{{ asset('favicon.ico') }}">
@@ -49,39 +63,49 @@
             --landing-button-text: {{ $data['button_text_color'] }};
             --landing-button-radius: {{ $data['button_radius'] }}px;
             --landing-spacing: {{ $data['section_spacing'] }}px;
+            --hero-image-fit: {{ $data['hero_image_fit'] }};
+            --hero-image-position: {{ $data['hero_focal_point'] }};
+            --landing-light-color: {{ $data['light_color'] }};
+            --landing-light-opacity: {{ $data['light_intensity'] / 100 }};
         }
     </style>
     <script id="landing-configuration" type="application/json">{!! json_encode($trackingConfiguration, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
     <script src="{{ asset('js/landing.js') }}?v={{ filemtime(public_path('js/landing.js')) }}" defer></script>
 </head>
-<body class="landing-page button-{{ $data['button_style'] }} animation-{{ $data['animation'] }} {{ $preview ? 'landing-preview' : '' }}" data-landing-id="{{ $landing->id }}">
+<body class="landing-page button-{{ $data['button_style'] }} animation-{{ $data['animation'] }} button-animation-{{ $data['button_animation'] }} light-effect-{{ $data['light_effect'] }} image-motion-{{ $data['image_motion'] }} {{ $preview ? 'landing-preview' : '' }}" data-landing-id="{{ $landing->id }}">
     <a class="landing-skip" href="#main-content">Saltar al contenido</a>
-    <header class="landing-header">
+    @if($data['light_effect'] !== 'none')<div class="landing-light" aria-hidden="true"><span></span><span></span></div>@endif
+    <header class="landing-header {{ $data['sticky_header'] ? 'is-sticky' : '' }}">
         <a href="#main-content" class="landing-brand" aria-label="{{ $data['brand_name'] }} · inicio">{{ $data['brand_name'] }}<span>FOTOGRAFÍA CON HISTORIA</span></a>
-        @if($leadSection)<a class="landing-header-link" href="#contacto">{{ $data['button_label'] }} <span aria-hidden="true">↗</span></a>@endif
+        @if($hasPrimaryDestination)<a class="landing-header-link" href="{{ $primaryButtonUrl }}">{{ $data['button_label'] }} <span aria-hidden="true">↗</span></a>@endif
     </header>
     <main id="main-content">
     @foreach($data['sections'] as $sectionIndex => $section)
         @continue(!$section['enabled'])
-        @continue($section['type'] === 'testimonials' && count($data['testimonials']) === 0)
+        @continue($section['type'] === 'testimonials' && $testimonials->isEmpty())
         @php
             $sectionId = $section['type'] === 'lead' && ! $contactRendered ? 'contacto' : 'section-'.$sectionIndex;
             $sectionButton = $section['button_label'] ?: $data['button_label'];
-            $sectionButtonUrl = $section['button_url'] ?: '#contacto';
+            $sectionButtonUrl = $section['button_url'] ?: $primaryButtonUrl;
+            if ($sectionButtonUrl === '#contacto' && !$leadSection) { $sectionButtonUrl = $primaryButtonUrl; }
             $isHero = $section['type'] === 'hero';
+            $hasHeroMedia = $section['image'] || ($data['hero_media'] === 'carousel' && $heroImages->isNotEmpty()) || ($data['hero_media'] === 'video' && ($data['hero_video_url'] || $heroPoster));
             $headingTag = $isHero && ! $heroRendered ? 'h1' : 'h2';
             if ($isHero) { $heroRendered = true; }
             if ($section['type'] === 'lead') { $contactRendered = true; }
         @endphp
-        <section id="{{ $sectionId }}" class="landing-section section-{{ $section['type'] }} {{ $isHero ? 'hero-'.$data['hero_layout'] : '' }}" data-landing-section="{{ $sectionIndex }}" aria-labelledby="heading-{{ $sectionIndex }}" style="--section-padding:{{ $section['padding'] }}px;@if($section['custom_background']) background-color:{{ $section['background'] }};@endif">
-            <div class="landing-container {{ in_array($section['type'], ['hero', 'lead', 'text']) ? 'landing-split' : '' }} {{ in_array($section['type'], ['hero', 'text']) && !$section['image'] ? 'without-image' : '' }}">
+        <section id="{{ $sectionId }}" class="landing-section section-{{ $section['type'] }} {{ $isHero ? 'hero-'.$heroLayout.' hero-media-'.$data['hero_media'] : '' }}" data-landing-section="{{ $sectionIndex }}" aria-labelledby="heading-{{ $sectionIndex }}" style="--section-padding:{{ $section['padding'] }}px;@if($section['custom_background']) background-color:{{ $section['background'] }};@endif">
+            <div class="landing-container {{ in_array($section['type'], ['hero', 'lead', 'text']) ? 'landing-split' : '' }} {{ ($isHero && !$hasHeroMedia) || ($section['type'] === 'text' && !$section['image']) ? 'without-image' : '' }}">
                 <div class="section-intro reveal">
                     @if($section['eyebrow'])<p class="landing-eyebrow"><span aria-hidden="true"></span>{{ $section['eyebrow'] }}</p>@endif
                     <{{ $headingTag }} id="heading-{{ $sectionIndex }}">{{ $section['title'] }}</{{ $headingTag }}>
                     @if($section['text'])<p class="landing-description">{{ $section['text'] }}</p>@endif
                     @if($isHero || $section['type'] === 'text')
-                        @if($leadSection || $section['button_url'])<a class="landing-button" href="{{ $sectionButtonUrl }}">{{ $sectionButton }} <span aria-hidden="true">↗</span></a>@endif
-                        @if($isHero)<p class="hero-caption">FOTOGRAFÍAS PARA VOLVER A SENTIR.</p>@endif
+                        @if($hasPrimaryDestination)<a class="landing-button" href="{{ $sectionButtonUrl }}">{{ $sectionButton }} <span aria-hidden="true">↗</span></a>@endif
+                        @if($isHero)
+                            @if(count($data['trust_points']))<ul class="hero-trust" aria-label="Nuestra atención">@foreach($data['trust_points'] as $point)@if($point['text'])<li><span aria-hidden="true">✓</span>{{ $point['text'] }}</li>@endif @endforeach</ul>@endif
+                            <p class="hero-caption">FOTOGRAFÍAS PARA VOLVER A SENTIR.</p>
+                        @endif
                     @endif
                     @if($section['type'] === 'lead')
                         <div class="contact-assurance"><span aria-hidden="true">↗</span><p>Cuéntanos lo que tienes en mente.<br>Conversemos sobre los detalles de tu evento.</p></div>
@@ -90,16 +114,31 @@
                     @endif
                 </div>
 
-                @if($isHero || $section['type'] === 'text')
-                    @if($section['image'])<figure class="hero-visual reveal"><img src="{{ asset($section['image']) }}" alt="{{ $section['alt'] }}" width="1200" height="1500" @if($isHero) fetchpriority="high" @else loading="lazy" @endif><figcaption><span>{{ $data['brand_name'] }}</span><span aria-hidden="true">01 / HISTORIAS</span></figcaption></figure>@endif
+                @if($isHero && $data['hero_media'] === 'carousel' && $heroImages->isNotEmpty())
+                    <div class="hero-visual hero-carousel landing-carousel reveal" data-carousel data-autoplay="{{ $data['carousel_autoplay'] ? '1' : '0' }}" data-interval="{{ $data['carousel_interval'] }}" role="region" aria-roledescription="carrusel" aria-label="Fotografías de la portada">
+                        <div class="carousel-track" id="hero-track-{{ $sectionIndex }}" data-carousel-track tabindex="0" aria-label="Fotografías de portada; usa las flechas para navegar">
+                        @foreach($heroImages as $image)<figure class="carousel-slide" data-carousel-slide role="group" aria-roledescription="diapositiva" aria-label="{{ $loop->iteration }} de {{ $loop->count }}"><div class="carousel-image-frame"><img src="{{ asset($image['image']) }}" alt="{{ $image['alt'] }}" width="1200" height="1500" @if($loop->first) fetchpriority="high" @else loading="lazy" @endif></div>@if($image['alt'])<figcaption>{{ $image['alt'] }}</figcaption>@endif</figure>@endforeach
+                        </div>
+                        @if($heroImages->count() > 1)<div class="carousel-controls" data-carousel-controls hidden><button type="button" class="carousel-arrow" data-carousel-prev aria-label="Fotografía anterior" aria-controls="hero-track-{{ $sectionIndex }}">←</button><div class="carousel-dots">@foreach($heroImages as $image)<button type="button" data-carousel-dot="{{ $loop->index }}" aria-label="Mostrar fotografía {{ $loop->iteration }}" aria-pressed="{{ $loop->first ? 'true' : 'false' }}" aria-controls="hero-track-{{ $sectionIndex }}"><span></span></button>@endforeach</div><button type="button" class="carousel-pause" data-carousel-pause aria-label="Pausar reproducción automática" @if(!$data['carousel_autoplay']) hidden @endif>Ⅱ</button><button type="button" class="carousel-arrow" data-carousel-next aria-label="Siguiente fotografía" aria-controls="hero-track-{{ $sectionIndex }}">→</button></div>@endif
+                    </div>
+                @elseif($isHero && $data['hero_media'] === 'video' && $data['hero_video_url'])
+                    <figure class="hero-visual hero-video reveal"><div class="hero-video-frame"><video controls playsinline preload="none" @if($heroPoster) poster="{{ asset($heroPoster) }}" @endif @if($data['hero_video_autoplay']) data-autoplay-video muted loop @endif src="{{ asset($data['hero_video_url']) }}" aria-label="{{ $section['alt'] ?: 'Video de presentación del estudio' }}"><a href="{{ asset($data['hero_video_url']) }}">Abrir video de presentación</a></video></div><figcaption><span>{{ $data['brand_name'] }}</span><span>UNA HISTORIA EN MOVIMIENTO</span></figcaption></figure>
+                @elseif($isHero || $section['type'] === 'text')
+                    @php $staticImage = $isHero && $data['hero_media'] === 'video' ? $heroPoster : $section['image']; @endphp
+                    @if($staticImage)<figure class="hero-visual {{ $isHero && ($data['hero_media'] === 'flyer' || $data['hero_image_fit'] === 'contain') ? 'is-flyer' : '' }} reveal"><div class="hero-image-frame"><img src="{{ asset($staticImage) }}" alt="{{ $section['alt'] }}" width="1200" height="1500" @if($isHero) fetchpriority="high" @else loading="lazy" @endif></div><figcaption><span>{{ $data['brand_name'] }}</span><span aria-hidden="true">01 / HISTORIAS</span></figcaption></figure>@endif
                 @elseif($section['type'] === 'benefits')
                     <div class="benefits-grid">@foreach($data['benefits'] as $benefit)<article class="benefit-item reveal"><span class="benefit-number" aria-hidden="true">{{ str_pad((string) $loop->iteration, 2, '0', STR_PAD_LEFT) }}</span><h3>{{ $benefit['title'] }}</h3><p>{{ $benefit['text'] }}</p></article>@endforeach</div>
                 @elseif($section['type'] === 'gallery')
-                    <div class="landing-gallery">@foreach($data['gallery'] as $image)<figure class="gallery-image reveal"><img src="{{ asset($image['image']) }}" alt="{{ $image['alt'] }}" loading="lazy" width="900" height="1100">@if($image['alt'])<figcaption>{{ $image['alt'] }}</figcaption>@endif</figure>@endforeach</div>
+                    @if($data['gallery_layout'] === 'carousel' && $galleryImages->isNotEmpty())
+                    <div class="gallery-carousel landing-carousel reveal" data-carousel data-autoplay="{{ $data['carousel_autoplay'] ? '1' : '0' }}" data-interval="{{ $data['carousel_interval'] }}" role="region" aria-roledescription="carrusel" aria-label="Galería de historias">
+                        <div class="carousel-track" id="gallery-track-{{ $sectionIndex }}" data-carousel-track tabindex="0" aria-label="Galería; usa las flechas para navegar">@foreach($galleryImages as $image)<figure class="carousel-slide" data-carousel-slide role="group" aria-roledescription="diapositiva" aria-label="{{ $loop->iteration }} de {{ $loop->count }}"><div class="carousel-image-frame"><img src="{{ asset($image['image']) }}" alt="{{ $image['alt'] }}" loading="lazy" width="1200" height="900"></div>@if($image['alt'])<figcaption>{{ $image['alt'] }}</figcaption>@endif</figure>@endforeach</div>
+                        @if($galleryImages->count() > 1)<div class="carousel-controls" data-carousel-controls hidden><button type="button" class="carousel-arrow" data-carousel-prev aria-label="Fotografía anterior" aria-controls="gallery-track-{{ $sectionIndex }}">←</button><div class="carousel-dots">@foreach($galleryImages as $image)<button type="button" data-carousel-dot="{{ $loop->index }}" aria-label="Mostrar fotografía {{ $loop->iteration }}" aria-pressed="{{ $loop->first ? 'true' : 'false' }}" aria-controls="gallery-track-{{ $sectionIndex }}"><span></span></button>@endforeach</div><button type="button" class="carousel-pause" data-carousel-pause aria-label="Pausar reproducción automática" @if(!$data['carousel_autoplay']) hidden @endif>Ⅱ</button><button type="button" class="carousel-arrow" data-carousel-next aria-label="Siguiente fotografía" aria-controls="gallery-track-{{ $sectionIndex }}">→</button></div>@endif
+                    </div>
+                    @else<div class="landing-gallery">@foreach($galleryImages as $image)<figure class="gallery-image reveal"><div class="gallery-image-frame"><img src="{{ asset($image['image']) }}" alt="{{ $image['alt'] }}" loading="lazy" width="900" height="1100"></div>@if($image['alt'])<figcaption>{{ $image['alt'] }}</figcaption>@endif</figure>@endforeach</div>@endif
                 @elseif($section['type'] === 'offer')
-                    <div class="offer-panel reveal"><div><span class="landing-eyebrow">{{ $data['offer_label'] }}</span>@if((float) $data['price'] > 0)<p class="offer-price"><span>S/</span> {{ number_format((float) $data['price'], 2, '.', ',') }}</p>@else<p class="offer-price price-on-request">Una propuesta a su medida</p>@endif @if($data['price_note'])<p class="offer-note">{{ $data['price_note'] }}</p>@endif</div>@if($leadSection || $section['button_url'])<a class="landing-button" href="{{ $sectionButtonUrl }}">{{ $sectionButton }} <span aria-hidden="true">↗</span></a>@endif</div>
+                    <div class="offer-panel reveal"><div><span class="landing-eyebrow">{{ $data['offer_label'] }}</span>@if((float) $data['price'] > 0)<p class="offer-price"><span>S/</span> {{ number_format((float) $data['price'], 2, '.', ',') }}</p>@else<p class="offer-price price-on-request">Una propuesta a su medida</p>@endif @if($data['price_note'])<p class="offer-note">{{ $data['price_note'] }}</p>@endif</div>@if($hasPrimaryDestination)<a class="landing-button" href="{{ $sectionButtonUrl }}">{{ $sectionButton }} <span aria-hidden="true">↗</span></a>@endif</div>
                 @elseif($section['type'] === 'testimonials')
-                    <div class="testimonials-grid">@foreach($data['testimonials'] as $testimonial)<figure class="testimonial-item reveal"><span class="quote-mark" aria-hidden="true">“</span><blockquote>{{ $testimonial['quote'] }}</blockquote><figcaption>{{ $testimonial['name'] }}</figcaption></figure>@endforeach</div>
+                    <div class="testimonials-grid">@foreach($testimonials as $testimonial)<figure class="testimonial-item reveal"><span class="quote-mark" aria-hidden="true">“</span><blockquote>{{ $testimonial['quote'] }}</blockquote><figcaption class="testimonial-person">@if($testimonial['image'])<img class="testimonial-photo" src="{{ asset($testimonial['image']) }}" alt="{{ $testimonial['name'] }}" loading="lazy" width="96" height="96">@else<span class="testimonial-initial" aria-hidden="true">{{ mb_substr($testimonial['name'], 0, 1) }}</span>@endif<div><strong>{{ $testimonial['name'] }}</strong>@if($testimonial['role'])<span>{{ $testimonial['role'] }}</span>@endif</div></figcaption></figure>@endforeach</div>
                 @elseif($section['type'] === 'faq')
                     <div class="landing-faq">@foreach($data['faqs'] as $faq)<details class="faq-item reveal"><summary>{{ $faq['question'] }}<span aria-hidden="true">+</span></summary><p>{{ $faq['answer'] }}</p></details>@endforeach</div>
                 @elseif($section['type'] === 'lead')
@@ -129,7 +168,7 @@
         </section>
     @endforeach
     </main>
-    <footer class="landing-footer"><a href="#main-content" class="landing-brand">{{ $data['brand_name'] }}</a><span>Historias que se sienten. Recuerdos que permanecen.</span><small>© {{ now()->year }} · Todos los precios en soles (PEN).</small></footer>
-    @if($data['sticky_cta'] && $leadSection)<div class="mobile-cta"><a class="landing-button" href="#contacto">{{ $data['button_label'] }} <span aria-hidden="true">↗</span></a></div>@endif
+    <footer class="landing-footer"><a href="#main-content" class="landing-brand">{{ $data['brand_name'] }}</a>@if($hasPrimaryDestination)<a class="landing-footer-cta" href="{{ $primaryButtonUrl }}">{{ $data['button_label'] }} ↗</a>@endif<span>Historias que se sienten. Recuerdos que permanecen.</span><small>© {{ now()->year }} · Todos los precios en soles (PEN).</small></footer>
+    @if($data['sticky_cta'] && $hasPrimaryDestination)<div class="mobile-cta floating-cta" data-floating-cta><span class="floating-cta-note">{{ $data['brand_name'] }}</span><a class="landing-button" href="{{ $primaryButtonUrl }}">{{ $data['button_label'] }} <span aria-hidden="true">↗</span></a></div>@endif
 </body>
 </html>

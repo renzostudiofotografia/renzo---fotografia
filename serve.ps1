@@ -17,5 +17,5 @@ if ($Setup) {
 
 $router = Join-Path $PSScriptRoot 'vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php'
 Set-Location -LiteralPath (Join-Path $PSScriptRoot 'public')
-& php -S "127.0.0.1:$Port" $router
+& php -d upload_max_filesize=50M -d post_max_size=55M -d memory_limit=256M -S "127.0.0.1:$Port" $router
 exit $LASTEXITCODE

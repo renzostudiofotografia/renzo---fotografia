@@ -20,11 +20,18 @@ class LandingPageController extends Controller
 {
     public function __construct(public LandingContent $content) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $showTrash = $request->boolean('trash');
+        $query = LandingPage::withCount('leads');
+        if ($showTrash) {
+            $query->onlyTrashed();
+        }
+
         return view('admin.landings', [
-            'landings' => LandingPage::withCount('leads')->latest('updated_at')->paginate(12),
-            'pendingCount' => 0,
+            'landings' => $query->latest($showTrash ? 'deleted_at' : 'updated_at')->paginate(12)->withQueryString(),
+            'pendingCount' => 0, 'showTrash' => $showTrash,
+            'trashCount' => LandingPage::onlyTrashed()->count(), 'activeCount' => LandingPage::count(),
         ]);
     }
 
@@ -49,7 +56,7 @@ class LandingPageController extends Controller
 
     public function edit(LandingPage $landing): View
     {
-        $data = $landing->draft;
+        $data = $this->content->hydrate($landing->draft);
         $oldData = session()->getOldInput('data');
         if (is_array($oldData)) {
             $data = array_replace($data, $oldData);
@@ -60,10 +67,16 @@ class LandingPageController extends Controller
             }
         }
 
+        $videoUploadMaxBytes = $this->videoUploadLimit();
+
         return view('admin.landing-editor', [
             'landing' => $landing, 'data' => $data,
             'revision' => session()->getOldInput('revision', $landing->revision), 'groups' => config('landing.groups'),
             'library' => $this->library(), 'pendingCount' => 0,
+            'videoLibrary' => MediaAsset::whereIn('mime_type', ['video/mp4', 'video/webm'])->latest()->get()
+                ->map(fn (MediaAsset $asset): array => ['url' => '/media/'.$asset->id, 'name' => $asset->name])->all(),
+            'videoUploadMaxBytes' => $videoUploadMaxBytes,
+            'videoUploadMaxLabel' => rtrim(rtrim(number_format($videoUploadMaxBytes / 1048576, 1, '.', ''), '0'), '.').' MB',
         ]);
     }
 
@@ -93,7 +106,7 @@ class LandingPageController extends Controller
             $request->validate(['data' => ['required', 'array']]);
             $data = $this->content->validate($request->input('data'));
         } else {
-            $data = $landing->draft;
+            $data = $this->content->hydrate($landing->draft);
         }
 
         return response()->view('pages.landing', ['landing' => $landing, 'data' => $data, 'preview' => true])
@@ -107,10 +120,17 @@ class LandingPageController extends Controller
         DB::transaction(function () use ($request, $landing): void {
             $current = LandingPage::whereKey($landing->id)->lockForUpdate()->firstOrFail();
             $this->checkRevision($request, $current);
-            $data = $this->content->validate($current->draft);
+            $data = $this->content->validate($this->content->hydrate($current->draft));
             $visible = collect($data['sections'])->where('enabled', true);
-            if ($visible->where('type', 'hero')->count() !== 1 || $visible->where('type', 'lead')->count() !== 1) {
-                throw ValidationException::withMessages(['data.sections' => 'La landing debe tener una portada y un formulario de contacto visibles. Añade o activa esas secciones y evita duplicarlas.']);
+            $formCount = $visible->where('type', 'lead')->count();
+            if ($visible->where('type', 'hero')->count() !== 1 || $formCount > 1) {
+                throw ValidationException::withMessages(['data.sections' => 'La landing debe tener una sola portada visible y como máximo un formulario de contacto visible.']);
+            }
+            if ($this->content->primaryButtonUrl($data) === '#contacto' && $formCount === 0) {
+                throw ValidationException::withMessages(['data.sections' => 'Activa el formulario de contacto o cambia el destino del botón de la portada por un enlace a WhatsApp u otra página.']);
+            }
+            if ($data['hero_media'] === 'video' && blank($data['hero_video_url'])) {
+                throw ValidationException::withMessages(['data.hero_video_url' => 'Sube un video o añade su enlace antes de publicar una portada de video.']);
             }
             $current->update([
                 'published' => $data, 'published_at' => now(), 'revision' => $current->revision + 1,
@@ -136,6 +156,41 @@ class LandingPageController extends Controller
         return back()->with('status', 'La landing dejó de ser pública. El borrador y los contactos se conservan.');
     }
 
+    public function destroy(Request $request, LandingPage $landing): RedirectResponse
+    {
+        $request->validate([
+            'revision' => ['required', 'integer', 'min:1'],
+            'confirmed' => ['accepted'],
+        ], ['confirmed.accepted' => 'Confirma que quieres mover esta landing a la papelera.']);
+
+        DB::transaction(function () use ($request, $landing): void {
+            $current = LandingPage::whereKey($landing->id)->lockForUpdate()->firstOrFail();
+            $this->checkRevision($request, $current);
+            $current->update(['revision' => $current->revision + 1, 'updated_by' => $request->user()->id]);
+            $current->delete();
+        });
+
+        return redirect()->route('admin.landings.index')
+            ->with('status', 'Landing movida a la papelera. Su enlace dejó de estar disponible y sus contactos se conservaron.');
+    }
+
+    public function restore(Request $request, LandingPage $landing): RedirectResponse
+    {
+        $request->validate(['revision' => ['required', 'integer', 'min:1']]);
+        DB::transaction(function () use ($request, $landing): void {
+            $current = LandingPage::onlyTrashed()->whereKey($landing->id)->lockForUpdate()->firstOrFail();
+            $this->checkRevision($request, $current);
+            $current->update([
+                'published' => null, 'published_at' => null,
+                'revision' => $current->revision + 1, 'updated_by' => $request->user()->id,
+            ]);
+            $current->restore();
+        });
+
+        return redirect()->route('admin.landings.edit', $landing)
+            ->with('status', 'Landing restaurada como borrador. Revisa el contenido y publícala cuando esté lista.');
+    }
+
     public function leads(LandingPage $landing): View
     {
         return view('admin.landing-leads', [
@@ -147,7 +202,7 @@ class LandingPageController extends Controller
     {
         $landing = $this->published($slug);
 
-        return response()->view('pages.landing', ['landing' => $landing, 'data' => $landing->published, 'preview' => false])
+        return response()->view('pages.landing', ['landing' => $landing, 'data' => $this->content->hydrate($landing->published), 'preview' => false])
             ->header('Cache-Control', 'private, no-store');
     }
 
@@ -222,6 +277,28 @@ class LandingPageController extends Controller
         return LandingPage::where('slug', $slug)->whereNotNull('published')->firstOrFail();
     }
 
+    private function videoUploadLimit(): int
+    {
+        $limit = 50 * 1048576;
+        foreach (['upload_max_filesize', 'post_max_size'] as $setting) {
+            $value = trim((string) ini_get($setting));
+            if (preg_match('/^([0-9]+(?:\.[0-9]+)?)\s*([KMG]?)$/i', $value, $matches) !== 1) {
+                continue;
+            }
+            $bytes = (int) ((float) $matches[1] * match (strtoupper($matches[2])) {
+                'G' => 1073741824,
+                'M' => 1048576,
+                'K' => 1024,
+                default => 1,
+            });
+            if ($bytes > 0) {
+                $limit = min($limit, $setting === 'post_max_size' ? max(1, $bytes - 10240) : $bytes);
+            }
+        }
+
+        return $limit;
+    }
+
     /** @return array<int, array{url: string, name: string, provider: string}> */
     private function library(): array
     {
@@ -231,7 +308,7 @@ class LandingPageController extends Controller
                 'url' => 'assets/images/'.str_replace('\\', '/', $file->getRelativePathname()),
                 'name' => $file->getFilename(), 'provider' => 'Original',
             ])->values()->all();
-        $uploads = MediaAsset::latest()->get()->map(fn (MediaAsset $asset): array => [
+        $uploads = MediaAsset::where('mime_type', 'like', 'image/%')->latest()->get()->map(fn (MediaAsset $asset): array => [
             'url' => '/media/'.$asset->id, 'name' => $asset->name, 'provider' => 'Biblioteca',
         ])->all();
 

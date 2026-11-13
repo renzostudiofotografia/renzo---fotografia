@@ -70,7 +70,7 @@ class CloudflareR2
         }
 
         $origin = $this->publicOrigin();
-        if (! config('services.cloudflare_r2.optimize') || $origin === null || ! str_starts_with($url, $origin.'/')) {
+        if (! str_starts_with($asset->mime_type, 'image/') || ! config('services.cloudflare_r2.optimize') || $origin === null || ! str_starts_with($url, $origin.'/')) {
             return $url;
         }
 

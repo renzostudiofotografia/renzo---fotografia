@@ -200,8 +200,182 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!reducedMotion && 'IntersectionObserver' in window && !document.body.classList.contains('animation-none')) {
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePageVisibility = () => document.body.classList.toggle('page-is-hidden', document.hidden);
+    document.addEventListener('visibilitychange', updatePageVisibility);
+    updatePageVisibility();
+
+    document.querySelectorAll('[data-carousel]').forEach((carousel) => {
+        const track = carousel.querySelector('[data-carousel-track]');
+        const slides = [...carousel.querySelectorAll('[data-carousel-slide]')];
+        if (!track || slides.length === 0) return;
+
+        const controls = carousel.querySelector('[data-carousel-controls]');
+        const dots = [...carousel.querySelectorAll('[data-carousel-dot]')];
+        const pauseButton = carousel.querySelector('[data-carousel-pause]');
+        const autoplay = carousel.dataset.autoplay === '1';
+        const interval = Math.min(12, Math.max(3, Number(carousel.dataset.interval) || 5)) * 1000;
+        const announcement = document.createElement('p');
+        announcement.className = 'visually-hidden';
+        announcement.setAttribute('aria-live', 'polite');
+        announcement.setAttribute('aria-atomic', 'true');
+        carousel.append(announcement);
+        let current = 0;
+        let timer;
+        let manuallyPaused = false;
+        let hovered = false;
+        let focused = false;
+        let visible = false;
+        let scrollFrame;
+
+        const selectCurrent = (index) => {
+            current = Math.min(slides.length - 1, Math.max(0, index));
+            slides.forEach((slide, slideIndex) => {
+                const selected = slideIndex === current;
+                slide.classList.toggle('is-current', selected);
+                slide.setAttribute('aria-hidden', String(!selected));
+            });
+            dots.forEach((dot, dotIndex) => dot.setAttribute('aria-pressed', String(dotIndex === current)));
+        };
+
+        const schedule = () => {
+            window.clearTimeout(timer);
+            const temporarilyPaused = hovered || focused || !visible || document.hidden || motionPreference.matches;
+            carousel.classList.toggle('is-paused', temporarilyPaused || manuallyPaused);
+            if (pauseButton) {
+                pauseButton.hidden = !autoplay || motionPreference.matches || slides.length < 2;
+                pauseButton.textContent = manuallyPaused ? '▶' : 'Ⅱ';
+                pauseButton.setAttribute('aria-label', manuallyPaused ? 'Reanudar reproducción automática' : 'Pausar reproducción automática');
+            }
+            if (!autoplay || slides.length < 2 || temporarilyPaused || manuallyPaused) return;
+            timer = window.setTimeout(() => navigate(current + 1, false), interval);
+        };
+
+        const navigate = (index, manual = true) => {
+            const destination = (index + slides.length) % slides.length;
+            const wraps = index < 0 || index >= slides.length;
+            if (manual) manuallyPaused = true;
+            selectCurrent(destination);
+            track.scrollTo({ left: destination * track.clientWidth, behavior: motionPreference.matches || wraps ? 'auto' : 'smooth' });
+            if (manual) announcement.textContent = `Fotografía ${destination + 1} de ${slides.length}`;
+            schedule();
+        };
+
+        if (controls) controls.hidden = slides.length < 2;
+        carousel.querySelector('[data-carousel-prev]')?.addEventListener('click', () => navigate(current - 1));
+        carousel.querySelector('[data-carousel-next]')?.addEventListener('click', () => navigate(current + 1));
+        dots.forEach((dot, index) => dot.addEventListener('click', () => navigate(index)));
+        pauseButton?.addEventListener('click', () => {
+            manuallyPaused = !manuallyPaused;
+            schedule();
+        });
+        track.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            navigate(event.key === 'Home' ? 0 : event.key === 'End' ? slides.length - 1 : current + (event.key === 'ArrowLeft' ? -1 : 1));
+        });
+        const pauseForInteraction = () => {
+            manuallyPaused = true;
+            schedule();
+        };
+        track.addEventListener('pointerdown', pauseForInteraction, { passive: true });
+        track.addEventListener('wheel', pauseForInteraction, { passive: true });
+        track.addEventListener('scroll', () => {
+            window.cancelAnimationFrame(scrollFrame);
+            scrollFrame = window.requestAnimationFrame(() => {
+                if (track.clientWidth) selectCurrent(Math.round(track.scrollLeft / track.clientWidth));
+            });
+        }, { passive: true });
+        carousel.addEventListener('pointerenter', () => { hovered = true; schedule(); });
+        carousel.addEventListener('pointerleave', () => { hovered = false; schedule(); });
+        carousel.addEventListener('focusin', () => { focused = true; schedule(); });
+        carousel.addEventListener('focusout', () => {
+            window.requestAnimationFrame(() => { focused = carousel.contains(document.activeElement); schedule(); });
+        });
+        document.addEventListener('visibilitychange', schedule);
+        motionPreference.addEventListener('change', schedule);
+        if ('IntersectionObserver' in window) {
+            new IntersectionObserver((entries) => {
+                visible = entries[0].isIntersecting;
+                schedule();
+            }, { threshold: 0.15 }).observe(carousel);
+        } else {
+            const checkVisibility = () => {
+                const bounds = carousel.getBoundingClientRect();
+                visible = bounds.bottom > 0 && bounds.top < window.innerHeight;
+                schedule();
+            };
+            window.addEventListener('scroll', checkVisibility, { passive: true });
+            checkVisibility();
+        }
+        const preserveSlideOnResize = () => track.scrollTo({ left: current * track.clientWidth, behavior: 'auto' });
+        if ('ResizeObserver' in window) new ResizeObserver(preserveSlideOnResize).observe(track);
+        else window.addEventListener('resize', preserveSlideOnResize);
+        selectCurrent(0);
+        schedule();
+    });
+
+    document.querySelectorAll('video[data-autoplay-video]').forEach((video) => {
+        let visible = false;
+        let userPaused = false;
+        const updatePlayback = () => {
+            if (!visible || document.hidden || motionPreference.matches) {
+                video.pause();
+                return;
+            }
+            if (userPaused) return;
+            video.muted = true;
+            video.play().catch(() => {});
+        };
+        video.addEventListener('pause', () => {
+            if (visible && !document.hidden && !motionPreference.matches) userPaused = true;
+        });
+        video.addEventListener('play', () => { userPaused = false; });
+        document.addEventListener('visibilitychange', updatePlayback);
+        motionPreference.addEventListener('change', updatePlayback);
+        if ('IntersectionObserver' in window) {
+            new IntersectionObserver((entries) => {
+                visible = entries[0].isIntersecting;
+                updatePlayback();
+            }, { threshold: 0.3 }).observe(video);
+        } else {
+            const checkVisibility = () => {
+                const bounds = video.getBoundingClientRect();
+                visible = bounds.bottom > 0 && bounds.top < window.innerHeight;
+                updatePlayback();
+            };
+            window.addEventListener('scroll', checkVisibility, { passive: true });
+            checkVisibility();
+        }
+    });
+
+    const floatingCta = document.querySelector('[data-floating-cta]');
+    if (floatingCta) {
+        let formVisible = false;
+        let footerVisible = false;
+        const updateFloatingCta = () => {
+            const editingForm = document.activeElement?.matches('input:not([type=hidden]), textarea, select');
+            floatingCta.hidden = formVisible || footerVisible || Boolean(editingForm);
+        };
+        document.addEventListener('focusin', updateFloatingCta);
+        document.addEventListener('focusout', () => window.requestAnimationFrame(updateFloatingCta));
+        if ('IntersectionObserver' in window) {
+            const form = document.querySelector('[data-lead-form]');
+            const footer = document.querySelector('.landing-footer');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.target === form) formVisible = entry.isIntersecting;
+                    if (entry.target === footer) footerVisible = entry.isIntersecting;
+                });
+                updateFloatingCta();
+            }, { threshold: 0.08 });
+            if (form) observer.observe(form);
+            if (footer) observer.observe(footer);
+        }
+        updateFloatingCta();
+    }
+
+    if (!motionPreference.matches && 'IntersectionObserver' in window && !document.body.classList.contains('animation-none')) {
         document.body.classList.add('motion-enabled');
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {

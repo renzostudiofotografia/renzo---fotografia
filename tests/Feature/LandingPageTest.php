@@ -196,6 +196,89 @@ class LandingPageTest extends TestCase
         }
     }
 
+    public function test_external_primary_buttons_work_without_an_internal_form_in_preview_and_publication(): void
+    {
+        $this->actingAs($this->owner());
+        foreach ([
+            'https://wa.me/51987654321?text=Hola%20Renzo',
+            'https://forms.example.test/reservar?servicio=bodas&origen=facebook',
+        ] as $index => $destination) {
+            $landing = $this->landing(slug: 'destino-externo-'.$index);
+            $data = $landing->draft;
+            $data['sections'][0]['button_url'] = $destination;
+            $data['sections'] = $index === 0
+                ? array_map(fn (array $section): array => array_replace($section, ['enabled' => $section['type'] !== 'lead']), $data['sections'])
+                : array_values(array_filter($data['sections'], fn (array $section): bool => $section['type'] !== 'lead'));
+
+            $preview = $this->postJson('/admin/landings/'.$landing->id.'/preview', ['data' => $data])->assertOk();
+            $this->put('/admin/landings/'.$landing->id, [
+                'name' => $landing->name, 'revision' => $landing->revision, 'data' => $data,
+            ])->assertRedirect()->assertSessionHasNoErrors();
+            $landing->refresh();
+            $this->post('/admin/landings/'.$landing->id.'/publish', ['revision' => $landing->revision])
+                ->assertRedirect()->assertSessionHasNoErrors();
+            $public = $this->get('/lp/'.$landing->slug)->assertOk();
+
+            foreach ([$preview, $public] as $response) {
+                $response->assertDontSee('href="#contacto"', false)->assertDontSee('data-lead-form', false);
+                $document = new \DOMDocument;
+                $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET);
+                $xpath = new \DOMXPath($document);
+                foreach ([
+                    '//header//a[contains(concat(" ", normalize-space(@class), " "), " landing-header-link ")]',
+                    '//section[contains(concat(" ", normalize-space(@class), " "), " section-hero ")]//a[contains(concat(" ", normalize-space(@class), " "), " landing-button ")]',
+                    '//div[contains(concat(" ", normalize-space(@class), " "), " mobile-cta ")]//a',
+                    '//section[contains(concat(" ", normalize-space(@class), " "), " section-offer ")]//a[contains(concat(" ", normalize-space(@class), " "), " landing-button ")]',
+                ] as $selector) {
+                    $buttons = $xpath->query($selector);
+                    $this->assertCount(1, $buttons);
+                    $this->assertSame($destination, $buttons->item(0)->getAttribute('href'));
+                }
+            }
+        }
+    }
+
+    public function test_existing_landings_with_an_empty_primary_url_keep_the_internal_form_destination(): void
+    {
+        $landing = $this->landing();
+        $data = $landing->draft;
+        $data['sections'][0]['button_url'] = '';
+        $landing->update(['draft' => $data]);
+        $this->actingAs($this->owner());
+        $this->get('/admin/landings/'.$landing->id.'/preview')->assertOk()
+            ->assertSee('href="#contacto"', false)->assertSee('data-lead-form', false);
+        $this->post('/admin/landings/'.$landing->id.'/publish', ['revision' => $landing->revision])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->get('/lp/'.$landing->slug)->assertOk()
+            ->assertSee('href="#contacto"', false)->assertSee('data-lead-form', false);
+
+        $landing->refresh();
+        $data['sections'] = array_values(array_filter($data['sections'], fn (array $section): bool => $section['type'] !== 'lead'));
+        $landing->update(['draft' => $data]);
+        $this->post('/admin/landings/'.$landing->id.'/publish', ['revision' => $landing->revision])
+            ->assertSessionHasErrors('data.sections');
+        $this->assertNotEmpty(array_filter($landing->fresh()->published['sections'], fn (array $section): bool => $section['type'] === 'lead'));
+    }
+
+    public function test_primary_button_accepts_web_links_while_preserving_section_specific_destinations(): void
+    {
+        $landing = $this->landing();
+        $this->actingAs($this->owner());
+        foreach (['http://example.test/formulario', 'https://example.test/formulario?campana=bodas&fecha=2027'] as $destination) {
+            $data = $landing->draft;
+            $data['sections'][0]['button_url'] = $destination;
+            $offerIndex = array_search('offer', array_column($data['sections'], 'type'), true);
+            $data['sections'][$offerIndex]['button_url'] = 'https://example.test/propuesta';
+            $this->put('/admin/landings/'.$landing->id, [
+                'name' => $landing->name, 'revision' => $landing->revision, 'data' => $data,
+            ])->assertRedirect()->assertSessionHasNoErrors();
+            $landing->refresh();
+            $this->assertSame($destination, $landing->draft['sections'][0]['button_url']);
+            $this->get('/admin/landings/'.$landing->id.'/preview')->assertOk()
+                ->assertSee('href="https://example.test/propuesta"', false);
+        }
+    }
+
     public function test_form_encoded_values_are_accepted_and_removing_all_optional_repeater_items_persists_empty_lists(): void
     {
         $landing = $this->landing();
@@ -247,10 +330,14 @@ class LandingPageTest extends TestCase
         $this->actingAs($this->owner());
         $unsafeSection = $landing->draft['sections'][0];
         $unsafeSection['button_url'] = 'javascript:alert(document.cookie)';
+        $dataUrlSection = array_replace($unsafeSection, ['button_url' => 'data:text/html,<script>alert(1)</script>']);
+        $protocolRelativeSection = array_replace($unsafeSection, ['button_url' => '//example.test/formulario']);
         $extraSection = $landing->draft['sections'][0];
         $extraSection['unvalidated_html'] = '<script>alert(1)</script>';
         foreach ([
             ['sections' => [$unsafeSection]],
+            ['sections' => [$dataUrlSection]],
+            ['sections' => [$protocolRelativeSection]],
             ['sections' => [$extraSection]],
             ['heading_font' => 'Untrusted Font'],
             ['background_color' => '#fff; background-image:url(https://example.test)'],
