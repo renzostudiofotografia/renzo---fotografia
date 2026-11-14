@@ -80,12 +80,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const addButton = event.target.closest('[data-add-item]');
         if (addButton) {
             const repeater = addButton.closest('.repeater');
-            const list = repeater.querySelector('.repeater-items');
+            const list = repeater.querySelector(':scope > .repeater-items');
             if (list.children.length >= Number(repeater.dataset.max)) return;
             const index = Number(repeater.dataset.nextIndex);
             repeater.dataset.nextIndex = String(index + 1);
             const container = document.createElement('div');
-            container.innerHTML = repeater.querySelector('template').innerHTML.replaceAll('__INDEX__', String(index));
+            container.innerHTML = repeater.querySelector(':scope > template').innerHTML.replaceAll(repeater.dataset.itemToken || '__INDEX__', String(index));
             list.append(container.firstElementChild);
             list.dispatchEvent(new Event('input', { bubbles: true }));
             markDirty();
@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const list = item.parentElement;
             if (itemButton.hasAttribute('data-remove-item')) {
                 if (list.children.length <= Number(item.closest('.repeater').dataset.min)) return;
+                if (item.closest('[data-landing-editor]') && !window.confirm('¿Quitar este contenido del borrador? El cambio se aplicará al público después de guardar y publicar.')) return;
                 item.remove();
             } else if (itemButton.hasAttribute('data-item-up') && item.previousElementSibling) {
                 list.insertBefore(item, item.previousElementSibling);

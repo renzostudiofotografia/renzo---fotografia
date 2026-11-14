@@ -6,12 +6,16 @@ use App\LandingContent;
 use App\Models\LandingLead;
 use App\Models\LandingPage;
 use App\Models\MediaAsset;
+use App\Notifications\LandingInquiryReceived;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -40,11 +44,12 @@ class LandingPageController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'slug' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'unique:landing_pages,slug'],
-            'preset' => ['required', Rule::in(['editorial', 'modern'])],
+            'preset' => ['required', Rule::in(['editorial', 'modern', 'wedding'])],
         ], [
             'slug.regex' => 'Usa letras minúsculas, números y guiones para el enlace.',
             'slug.unique' => 'Este enlace ya pertenece a otra landing.',
         ]);
+        $this->ensureSlugAvailable($data['slug']);
         $landing = LandingPage::create([
             'name' => $data['name'], 'slug' => $data['slug'],
             'draft' => $this->content->defaults($data['preset']),
@@ -80,24 +85,58 @@ class LandingPageController extends Controller
         ]);
     }
 
-    public function update(Request $request, LandingPage $landing): RedirectResponse
+    public function update(Request $request, LandingPage $landing): RedirectResponse|JsonResponse
     {
+        if ($request->has('editor_form') && (string) $request->input('editor_complete') !== '1') {
+            throw ValidationException::withMessages(['data' => 'El servidor recibió un formulario incompleto. Activa JavaScript o aumenta max_input_vars antes de guardar. El borrador anterior se conserva.']);
+        }
         $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'revision' => ['required', 'integer', 'min:1'],
             'data' => ['required', 'array'],
+            'slug' => ['sometimes', 'required', 'string', 'max:120', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', Rule::unique('landing_pages', 'slug')->ignore($landing->id)],
         ]);
         $data = $this->content->validate($request->input('data'));
         DB::transaction(function () use ($request, $landing, $data): void {
             $current = LandingPage::whereKey($landing->id)->lockForUpdate()->firstOrFail();
             $this->checkRevision($request, $current);
+            $slug = $request->input('slug', $current->slug);
+            $aliases = $current->previous_slugs ?? [];
+            if ($slug !== $current->slug) {
+                $this->ensureSlugAvailable($slug, $current);
+                $aliases = array_values(array_unique([...array_diff($aliases, [$slug]), $current->slug]));
+            }
             $current->update([
                 'name' => $request->input('name'), 'draft' => $data,
+                'slug' => $slug, 'previous_slugs' => $aliases,
                 'revision' => $current->revision + 1, 'updated_by' => $request->user()->id,
             ]);
         });
 
-        return redirect()->route('admin.landings.edit', $landing)->with('status', 'Borrador guardado. La versión pública cambiará cuando publiques esta landing.');
+        $message = 'Borrador guardado. La versión pública cambiará cuando publiques esta landing.';
+        if ($request->expectsJson()) {
+            $request->session()->flash('status', $message);
+
+            return response()->json(['redirect' => route('admin.landings.edit', $landing)]);
+        }
+
+        return redirect()->route('admin.landings.edit', $landing)->with('status', $message);
+    }
+
+    public function wedding(Request $request, LandingPage $landing): RedirectResponse
+    {
+        $request->validate(['revision' => ['required', 'integer', 'min:1']]);
+        DB::transaction(function () use ($request, $landing): void {
+            $current = LandingPage::whereKey($landing->id)->lockForUpdate()->firstOrFail();
+            $this->checkRevision($request, $current);
+            $data = $this->content->validate($this->content->weddingDraft($current->draft));
+            $current->update([
+                'draft' => $data, 'revision' => $current->revision + 1, 'updated_by' => $request->user()->id,
+            ]);
+        });
+
+        return redirect()->route('admin.landings.edit', $landing)
+            ->with('status', 'Diseño de bodas preparado en el borrador. Conservamos tus textos, imágenes y versión publicada. Revisa las historias, experiencias y datos de contacto antes de publicar.');
     }
 
     public function preview(Request $request, LandingPage $landing): Response
@@ -158,6 +197,11 @@ class LandingPageController extends Controller
 
     public function destroy(Request $request, LandingPage $landing): RedirectResponse
     {
+        if (! method_exists(LandingPage::class, 'getDeletedAtColumn')) {
+            throw ValidationException::withMessages([
+                'landing' => 'Completa la actualización del modelo LandingPage para activar la papelera antes de eliminar una landing.',
+            ]);
+        }
         $request->validate([
             'revision' => ['required', 'integer', 'min:1'],
             'confirmed' => ['accepted'],
@@ -198,9 +242,14 @@ class LandingPageController extends Controller
         ]);
     }
 
-    public function show(string $slug): Response
+    public function show(Request $request, string $slug): Response|RedirectResponse
     {
         $landing = $this->published($slug);
+        if ($landing->slug !== $slug) {
+            $query = $request->getQueryString();
+
+            return redirect(route('landing.show', $landing->slug).($query ? '?'.$query : ''), 301);
+        }
 
         return response()->view('pages.landing', ['landing' => $landing, 'data' => $this->content->hydrate($landing->published), 'preview' => false])
             ->header('Cache-Control', 'private, no-store');
@@ -209,12 +258,16 @@ class LandingPageController extends Controller
     public function submitLead(Request $request, string $slug): JsonResponse|RedirectResponse
     {
         $landing = $this->published($slug);
+        $published = $this->content->hydrate($landing->published);
+        $experiences = collect($published['experiences'])->filter(static fn (array $item): bool => $item['enabled'] && filled($item['name']));
         $data = $request->validate([
             'submission_id' => ['required', 'uuid'],
             'name' => ['required', 'string', 'max:160'],
             'phone' => ['required', 'string', 'regex:/^\+?[0-9 ()-]{7,24}$/', 'max:30'],
             'email' => ['nullable', 'email', 'max:160'],
-            'event_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'event_date' => [Rule::requiredIf($published['require_event_date']), 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'location' => [Rule::requiredIf($published['show_location'] && $published['require_location']), 'nullable', 'string', 'max:200'],
+            'experience' => ['nullable', 'string', Rule::in($experiences->keys()->map(static fn (int $index): string => (string) $index)->all())],
             'message' => ['nullable', 'string', 'max:5000'],
             'consent' => ['accepted'],
             'company' => ['nullable', 'string', 'max:0'],
@@ -231,6 +284,9 @@ class LandingPageController extends Controller
             'email.email' => 'Revisa la dirección de correo.',
             'consent.accepted' => 'Necesitamos tu autorización para responder a la consulta.',
             'event_date.after_or_equal' => 'Elige una fecha a partir de hoy.',
+            'event_date.required' => 'Selecciona la fecha de su boda.',
+            'location.required' => 'Cuéntanos en qué ciudad o locación celebrarán su boda.',
+            'experience.in' => 'Selecciona una de las experiencias disponibles.',
             'submission_id.uuid' => 'Recarga la página y vuelve a intentar el envío.',
         ]);
         $phone = preg_replace('/\D/', '', $data['phone']);
@@ -239,18 +295,33 @@ class LandingPageController extends Controller
         }
         unset($data['consent'], $data['company']);
         $data['phone'] = $phone;
+        $experienceIndex = $data['experience'] ?? null;
+        $inquiryDetails = [
+            'source' => 'landing', 'landing_slug' => $landing->slug,
+            'location' => $published['show_location'] ? ($data['location'] ?? null) : null,
+            'experience' => $published['show_experience'] && $experienceIndex !== null ? ($experiences->get((int) $experienceIndex)['name'] ?? null) : null,
+            'experience_index' => $published['show_experience'] ? $experienceIndex : null,
+        ];
+        unset($data['location'], $data['experience']);
         $lead = LandingLead::firstOrCreate(['submission_id' => $data['submission_id']], [
-            ...$data, 'landing_page_id' => $landing->id, 'consent_at' => now(),
+            ...$data, 'landing_page_id' => $landing->id, 'consent_at' => now(), 'inquiry_details' => $inquiryDetails,
         ]);
         if ($lead->landing_page_id !== $landing->id) {
             throw ValidationException::withMessages(['submission_id' => 'Este envío ya fue utilizado. Recarga la página para continuar.']);
         }
-        $published = $landing->published;
+        if ($lead->wasRecentlyCreated && filled($published['notification_email']) && ! in_array(config('mail.default'), ['log', 'array'], true)) {
+            try {
+                Notification::route('mail', $published['notification_email'])->notify(new LandingInquiryReceived($landing));
+            } catch (\Throwable) {
+                Log::warning('La consulta de landing se guardó, pero no se pudo enviar la notificación.', ['landing_id' => $landing->id, 'lead_id' => $lead->id]);
+            }
+        }
         $conversion = [
             'page_id' => $landing->id, 'event_id' => $lead->submission_id,
             'tracking' => [
                 'pixel_id' => $published['pixel_id'], 'lead' => (bool) $published['track_lead'],
                 'value' => (float) $published['lead_value'], 'currency' => 'PEN',
+                'ga4_id' => $published['ga4_id'],
             ],
         ];
         $message = $published['success_message'] ?: 'Gracias. Recibimos tu solicitud.';
@@ -261,7 +332,7 @@ class LandingPageController extends Controller
             ]);
         }
 
-        return redirect()->route('landing.show', $slug)->with('landing_success', $message)
+        return redirect()->route('landing.show', $landing->slug)->with('landing_success', $message)
             ->with('landing_conversion', $lead->wasRecentlyCreated ? $conversion : null);
     }
 
@@ -274,7 +345,30 @@ class LandingPageController extends Controller
 
     private function published(string $slug): LandingPage
     {
-        return LandingPage::where('slug', $slug)->whereNotNull('published')->firstOrFail();
+        return LandingPage::whereNotNull('published')->where(function (Builder $query) use ($slug): void {
+            $query->where('slug', $slug)->orWhereJsonContains('previous_slugs', $slug);
+        })->firstOrFail();
+    }
+
+    private function ensureSlugAvailable(string $slug, ?LandingPage $landing = null): void
+    {
+        $query = LandingPage::withTrashed()->where(function (Builder $query) use ($slug): void {
+            $query->where('slug', $slug)->orWhereJsonContains('previous_slugs', $slug);
+        });
+        if ($landing) {
+            $query->where('id', '!=', $landing->id);
+        }
+        if ($query->exists()) {
+            throw ValidationException::withMessages(['slug' => 'Este enlace pertenece a otra landing o a uno de sus enlaces anteriores.']);
+        }
+    }
+
+    public function sitemap(): Response
+    {
+        $landings = LandingPage::whereNotNull('published')->get(['slug', 'updated_at']);
+
+        return response()->view('pages.landing-sitemap', ['landings' => $landings])
+            ->header('Content-Type', 'application/xml; charset=UTF-8');
     }
 
     private function videoUploadLimit(): int

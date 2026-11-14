@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const configuration = JSON.parse(configurationElement.textContent);
     const pixelId = String(configuration.pixelId || '');
     const hasPixel = !configuration.preview && /^\d{5,25}$/.test(pixelId);
+    const ga4Id = String(configuration.ga4Id || '');
+    const hasAnalytics = !configuration.preview && /^G-[A-Z0-9]{4,20}$/.test(ga4Id);
     const trackedConversions = new Set();
     const pageTitle = String(configuration.contentName || '').slice(0, 300);
     const sendPixelEvent = (...parameters) => {
@@ -33,6 +35,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Submission and tracking also work when browser storage is unavailable.
             }
         },
+    };
+
+    if (hasAnalytics) {
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', ga4Id, {
+            send_page_view: false,
+            page_location: window.location.origin + window.location.pathname,
+            page_referrer: '',
+            allow_google_signals: false,
+            allow_ad_personalization_signals: false,
+        });
+        if (!document.querySelector('script[data-landing-analytics]')) {
+            const script = document.createElement('script');
+            script.async = true;
+            script.dataset.landingAnalytics = '1';
+            script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga4Id)}`;
+            document.head.append(script);
+        }
+    }
+
+    const trackAnalytics = (eventName, parameters = {}) => {
+        if (configuration.preview) return;
+        const safeParameters = { landing_id: String(configuration.pageId), ...parameters };
+        try {
+            if (hasAnalytics && typeof window.gtag === 'function') {
+                window.gtag('event', eventName, { send_to: ga4Id, ...safeParameters });
+            }
+            if (hasPixel && eventName !== 'generate_lead') {
+                sendPixelEvent('trackSingleCustom', pixelId, eventName, safeParameters);
+            }
+        } catch {
+            // Analytics never prevent browsing or submitting an inquiry.
+        }
     };
 
     if (hasPixel) {
@@ -73,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const trackLead = (conversion) => {
         const eventId = conversion?.event_id;
         const tracking = conversion?.tracking;
-        if (!hasPixel || !configuration.lead || !tracking?.lead || tracking.pixel_id !== pixelId || !eventId) {
+        if (configuration.preview || !eventId) {
             return;
         }
         const storageKey = `landing-conversion:${configuration.pageId}:${eventId}`;
@@ -82,16 +119,196 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         trackedConversions.add(eventId);
         storage.set(storageKey, '1');
-        sendPixelEvent('trackSingle', pixelId, 'Lead', {
-            content_name: pageTitle,
-            currency: 'PEN',
-            value: Number(tracking.value) || 0,
-        }, { eventID: eventId });
+        trackAnalytics('generate_lead', { currency: 'PEN', value: Number(tracking?.value) || 0 });
+        if (hasPixel && configuration.lead && tracking?.lead && tracking.pixel_id === pixelId) {
+            sendPixelEvent('trackSingle', pixelId, 'Lead', {
+                content_name: pageTitle,
+                currency: 'PEN',
+                value: Number(tracking.value) || 0,
+            }, { eventID: eventId });
+        }
     };
 
     if (configuration.conversion) {
         trackLead(configuration.conversion);
     }
+
+    trackAnalytics('view_landing');
+    document.querySelectorAll('a[href]').forEach((link) => {
+        try {
+            const destination = new URL(link.href, window.location.href);
+            if (['wa.me', 'api.whatsapp.com', 'web.whatsapp.com'].includes(destination.hostname)) {
+                link.addEventListener('click', () => trackAnalytics('click_whatsapp'));
+            }
+        } catch {
+            // Invalid external links do not interrupt the rest of the page.
+        }
+    });
+    if ('IntersectionObserver' in window) {
+        const contentObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                if (entry.target.matches('[data-experience-index]')) {
+                    trackAnalytics('view_experience', { experience_id: entry.target.dataset.experienceIndex });
+                } else {
+                    trackAnalytics('view_portfolio');
+                }
+                contentObserver.unobserve(entry.target);
+            });
+        }, { threshold: 0.15 });
+        document.querySelectorAll('[data-analytics-section="portfolio"]').forEach((section) => contentObserver.observe(section.querySelector('.section-intro') || section));
+        document.querySelectorAll('[data-experience-index]').forEach((experience) => contentObserver.observe(experience));
+    }
+
+    const videoMotionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const videoPlayers = new Map();
+    const pauseVideos = (container) => {
+        container.querySelectorAll('video[data-landing-video]').forEach((video) => video.pause());
+    };
+    const initializeVideos = (container) => {
+        container.querySelectorAll('[data-media-player]').forEach((player) => {
+            if (player.dataset.videoInitialized === '1') return;
+            player.dataset.videoInitialized = '1';
+            const video = player.querySelector('[data-landing-video]');
+            const toggle = player.querySelector('[data-video-toggle]');
+            const restart = player.querySelector('[data-video-restart]');
+            const playIcon = player.querySelector('[data-video-play-icon]');
+            const pauseIcon = player.querySelector('[data-video-pause-icon]');
+            const status = player.querySelector('[data-video-status]');
+            if (!video || !toggle || !restart) return;
+            let visible = false;
+            let manuallyPaused = false;
+            let playPending = false;
+            let manualPlayback = false;
+            const autoplay = video.hasAttribute('data-autoplay-video');
+            const renderPlayback = () => {
+                const playing = !video.paused && !video.ended && !video.error;
+                toggle.setAttribute('aria-label', playing ? 'Pausar video' : 'Reproducir video');
+                toggle.setAttribute('aria-pressed', String(playing));
+                if (playIcon) playIcon.hidden = playing;
+                if (pauseIcon) pauseIcon.hidden = !playing;
+                player.classList.toggle('is-playing', playing);
+            };
+            const playVideo = async (manual = false) => {
+                if (playPending) return;
+                if (manual) { manuallyPaused = false; manualPlayback = true; }
+                if (!video.getAttribute('src') && video.dataset.videoSrc) {
+                    video.src = video.dataset.videoSrc;
+                    delete video.dataset.videoSrc;
+                }
+                if (!video.getAttribute('src')) return;
+                if (video.error) video.load();
+                if (status) status.hidden = true;
+                playPending = true;
+                try {
+                    await video.play();
+                } catch (error) {
+                    if (manual && status && error.name !== 'AbortError') {
+                        status.textContent = 'No pudimos reproducir este video. Vuelve a intentarlo.';
+                        status.hidden = false;
+                    }
+                } finally {
+                    playPending = false;
+                    renderPlayback();
+                }
+            };
+            toggle.addEventListener('click', () => {
+                if (video.paused || video.ended) playVideo(true);
+                else { manuallyPaused = true; video.pause(); }
+            });
+            restart.addEventListener('click', () => {
+                manuallyPaused = true;
+                video.pause();
+                try { video.currentTime = 0; } catch { /* Unloaded videos already start at zero. */ }
+                if (status) status.hidden = true;
+                renderPlayback();
+            });
+            video.addEventListener('play', () => {
+                videoPlayers.forEach((other) => { if (other !== video) other.pause(); });
+                renderPlayback();
+            });
+            video.addEventListener('pause', renderPlayback);
+            video.addEventListener('ended', renderPlayback);
+            video.addEventListener('error', () => {
+                if (status) { status.textContent = 'Este video no está disponible. Puedes volver a intentar reproducirlo.'; status.hidden = false; }
+                renderPlayback();
+            });
+            video.addEventListener('contextmenu', (event) => event.preventDefault());
+            video.addEventListener('dblclick', (event) => event.preventDefault());
+            const updateVisibility = () => {
+                const closedStory = player.closest('dialog') && !player.closest('dialog').open;
+                const hiddenSlide = player.closest('[data-carousel-slide][aria-hidden="true"]');
+                if (!visible || document.hidden || closedStory || hiddenSlide) { video.pause(); return; }
+                if (autoplay && videoMotionPreference.matches && !manualPlayback) { video.pause(); return; }
+                if (autoplay && !manuallyPaused && !videoMotionPreference.matches) {
+                    video.muted = true;
+                    playVideo();
+                }
+            };
+            videoPlayers.set(player, video);
+            document.addEventListener('visibilitychange', updateVisibility);
+            videoMotionPreference.addEventListener('change', updateVisibility);
+            if ('IntersectionObserver' in window) {
+                new IntersectionObserver((entries) => { visible = entries[0].isIntersecting; updateVisibility(); }, { threshold: 0.15 }).observe(player);
+            } else {
+                const check = () => { const bounds = player.getBoundingClientRect(); visible = bounds.bottom > 0 && bounds.top < window.innerHeight; updateVisibility(); };
+                window.addEventListener('scroll', check, { passive: true });
+                check();
+            }
+            renderPlayback();
+        });
+    };
+    initializeVideos(document);
+
+    document.querySelectorAll('[data-story-open]').forEach((opener) => {
+        const dialog = document.getElementById(opener.getAttribute('aria-controls'));
+        if (!(dialog instanceof HTMLDialogElement)) return;
+        const closeStory = () => {
+            pauseVideos(dialog);
+            dialog.close();
+            opener.focus({ preventScroll: true });
+        };
+        opener.addEventListener('click', () => {
+            pauseVideos(opener.closest('[data-story-index]') || document);
+            const gallery = dialog.querySelector('[data-story-gallery]');
+            const template = dialog.querySelector('[data-story-template]');
+            if (gallery && template && !gallery.children.length) {
+                const fragment = template.content.cloneNode(true);
+                fragment.querySelectorAll('img[data-src]').forEach((image) => {
+                    image.src = image.dataset.src;
+                    delete image.dataset.src;
+                });
+                gallery.append(fragment);
+                initializeVideos(gallery);
+            }
+            dialog.showModal();
+            trackAnalytics('select_wedding_story', { story_id: opener.dataset.storyOpen });
+        });
+        dialog.addEventListener('close', () => pauseVideos(dialog));
+        dialog.querySelector('[data-story-close]')?.addEventListener('click', closeStory);
+        dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeStory(); });
+        dialog.querySelector('[data-story-inquire]')?.addEventListener('click', closeStory);
+    });
+
+    document.querySelectorAll('[data-wedding-calculator]').forEach((calculator) => {
+        const output = calculator.querySelector('[data-calculator-total]');
+        const coverage = calculator.querySelector('[data-rate-coverage]');
+        const city = calculator.querySelector('[data-rate-city]');
+        if (!coverage || !output) return;
+        const initialMessage = output.textContent;
+        const currency = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN', minimumFractionDigits: 2 });
+        const updateEstimate = () => {
+            if (!coverage.value || (city && !city.value)) {
+                output.textContent = initialMessage;
+                return;
+            }
+            const amounts = [coverage.selectedOptions[0]?.dataset.amount, city?.selectedOptions[0]?.dataset.amount,
+                ...[...calculator.querySelectorAll('[data-rate-extra]:checked')].map((input) => input.dataset.amount)];
+            const estimate = amounts.reduce((total, amount) => total + (Number.isFinite(Number(amount)) ? Number(amount) : 0), 0);
+            output.textContent = currency.format(estimate);
+        };
+        calculator.addEventListener('change', updateEstimate);
+    });
 
     const attributionFields = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'];
     const attributionKey = `landing-attribution:${configuration.pageId}`;
@@ -124,6 +341,50 @@ document.addEventListener('DOMContentLoaded', () => {
         const button = form.querySelector('[type="submit"]');
         const buttonLabel = button.querySelector('[data-submit-label]');
         const originalLabel = buttonLabel.textContent;
+        const steps = [...form.querySelectorAll('[data-inquiry-step]')];
+        const twoStep = form.dataset.twoStep === '1' && steps.length === 2;
+        let inquiryStarted = false;
+        const showStep = (index, focus = true) => {
+            if (!twoStep) return;
+            steps.forEach((step, stepIndex) => { step.hidden = stepIndex !== index; });
+            form.querySelectorAll('[data-inquiry-step-label]').forEach((label, stepIndex) => {
+                if (stepIndex === index) label.setAttribute('aria-current', 'step');
+                else label.removeAttribute('aria-current');
+            });
+            if (focus) {
+                steps[index].querySelector('input, select, textarea, button')?.focus({ preventScroll: true });
+                const headerHeight = document.querySelector('.landing-header.is-sticky')?.getBoundingClientRect().height || 0;
+                window.scrollTo({
+                    top: window.scrollY + form.getBoundingClientRect().top - headerHeight - 16,
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                });
+            }
+        };
+        form.addEventListener('focusin', () => {
+            if (inquiryStarted) return;
+            inquiryStarted = true;
+            trackAnalytics('begin_inquiry');
+        });
+        if (twoStep) {
+            form.querySelector('[data-inquiry-progress]').hidden = false;
+            const next = form.querySelector('[data-inquiry-next]');
+            const back = form.querySelector('[data-inquiry-back]');
+            next.hidden = false;
+            back.hidden = false;
+            const hasStepOneError = Boolean(steps[0].querySelector('.field-error:not(:empty)'));
+            const hasStepTwoError = Boolean(steps[1].querySelector('.field-error:not(:empty)'));
+            showStep(hasStepTwoError && !hasStepOneError ? 1 : 0, false);
+            next.addEventListener('click', () => {
+                const invalid = [...steps[0].querySelectorAll('input, select, textarea')].find((input) => !input.checkValidity());
+                if (invalid) { invalid.reportValidity(); return; }
+                showStep(1);
+            });
+            back.addEventListener('click', () => showStep(0));
+            form.addEventListener('invalid', (event) => {
+                const index = steps.findIndex((step) => step.contains(event.target));
+                if (index >= 0) showStep(index, false);
+            }, true);
+        }
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -164,7 +425,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         });
                         status.textContent = 'Revisa los campos señalados para enviar tu consulta.';
-                        form.querySelector('[aria-invalid="true"]')?.focus();
+                        const invalidInput = form.querySelector('[aria-invalid="true"]');
+                        const invalidStep = steps.findIndex((step) => step.contains(invalidInput));
+                        if (invalidStep >= 0) showStep(invalidStep, false);
+                        invalidInput?.focus();
+                        invalidInput?.scrollIntoView({ block: 'center', behavior: 'smooth' });
                     } else if (response.status === 429) {
                         status.textContent = 'Has enviado varias consultas. Espera unos minutos y vuelve a intentarlo.';
                     } else if (response.status === 419) {
@@ -172,6 +437,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         status.textContent = 'No pudimos guardar tu consulta. Vuelve a intentarlo en un momento.';
                     }
+                    status.hidden = false;
+                    return;
+                }
+                if (!responseType.includes('application/json') || typeof result.created !== 'boolean' ||
+                    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(result.event_id || ''))) {
+                    status.textContent = 'No recibimos la confirmación del envío. Tus datos siguen aquí; vuelve a intentarlo para confirmar tu consulta.';
                     status.hidden = false;
                     return;
                 }
@@ -234,6 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const selected = slideIndex === current;
                 slide.classList.toggle('is-current', selected);
                 slide.setAttribute('aria-hidden', String(!selected));
+                if (!selected) pauseVideos(slide);
             });
             dots.forEach((dot, dotIndex) => dot.setAttribute('aria-pressed', String(dotIndex === current)));
         };
@@ -244,7 +516,10 @@ document.addEventListener('DOMContentLoaded', () => {
             carousel.classList.toggle('is-paused', temporarilyPaused || manuallyPaused);
             if (pauseButton) {
                 pauseButton.hidden = !autoplay || motionPreference.matches || slides.length < 2;
-                pauseButton.textContent = manuallyPaused ? '▶' : 'Ⅱ';
+                const playIcon = pauseButton.querySelector('[data-carousel-play-icon]');
+                const pauseIcon = pauseButton.querySelector('[data-carousel-pause-icon]');
+                if (playIcon) playIcon.hidden = !manuallyPaused;
+                if (pauseIcon) pauseIcon.hidden = manuallyPaused;
                 pauseButton.setAttribute('aria-label', manuallyPaused ? 'Reanudar reproducción automática' : 'Pausar reproducción automática');
             }
             if (!autoplay || slides.length < 2 || temporarilyPaused || manuallyPaused) return;
@@ -261,6 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
             schedule();
         };
 
+        carousel.addEventListener('play', () => { manuallyPaused = true; schedule(); }, true);
         if (controls) controls.hidden = slides.length < 2;
         carousel.querySelector('[data-carousel-prev]')?.addEventListener('click', () => navigate(current - 1));
         carousel.querySelector('[data-carousel-next]')?.addEventListener('click', () => navigate(current + 1));
@@ -313,40 +589,6 @@ document.addEventListener('DOMContentLoaded', () => {
         else window.addEventListener('resize', preserveSlideOnResize);
         selectCurrent(0);
         schedule();
-    });
-
-    document.querySelectorAll('video[data-autoplay-video]').forEach((video) => {
-        let visible = false;
-        let userPaused = false;
-        const updatePlayback = () => {
-            if (!visible || document.hidden || motionPreference.matches) {
-                video.pause();
-                return;
-            }
-            if (userPaused) return;
-            video.muted = true;
-            video.play().catch(() => {});
-        };
-        video.addEventListener('pause', () => {
-            if (visible && !document.hidden && !motionPreference.matches) userPaused = true;
-        });
-        video.addEventListener('play', () => { userPaused = false; });
-        document.addEventListener('visibilitychange', updatePlayback);
-        motionPreference.addEventListener('change', updatePlayback);
-        if ('IntersectionObserver' in window) {
-            new IntersectionObserver((entries) => {
-                visible = entries[0].isIntersecting;
-                updatePlayback();
-            }, { threshold: 0.3 }).observe(video);
-        } else {
-            const checkVisibility = () => {
-                const bounds = video.getBoundingClientRect();
-                visible = bounds.bottom > 0 && bounds.top < window.innerHeight;
-                updatePlayback();
-            };
-            window.addEventListener('scroll', checkVisibility, { passive: true });
-            checkVisibility();
-        }
     });
 
     const floatingCta = document.querySelector('[data-floating-cta]');

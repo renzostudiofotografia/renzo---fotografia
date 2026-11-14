@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('landing_pages', 'deleted_at')) {
+            return;
+        }
+
         Schema::table('landing_pages', function (Blueprint $table): void {
             $table->softDeletes();
         });
@@ -15,6 +19,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasColumn('landing_pages', 'deleted_at')) {
+            return;
+        }
+
         Schema::table('landing_pages', function (Blueprint $table): void {
             $table->dropSoftDeletes();
         });

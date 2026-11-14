@@ -23,6 +23,7 @@ Route::controller(PageController::class)->group(function (): void {
 Route::get('/media/{asset}', [MediaController::class, 'show'])->whereNumber('asset')->name('media.show');
 
 Route::get('/lp/{slug}', [LandingPageController::class, 'show'])->name('landing.show');
+Route::get('/landings-sitemap.xml', [LandingPageController::class, 'sitemap'])->name('landing.sitemap');
 Route::post('/lp/{slug}/leads', [LandingPageController::class, 'submitLead'])
     ->middleware('throttle:10,1')->name('landing.lead');
 
@@ -36,6 +37,7 @@ Route::prefix('admin/landings')->name('admin.landings.')->middleware(['auth', 'c
         Route::post('/{landing}/restore', 'restore')->withTrashed()->name('restore');
         Route::match(['get', 'post'], '/{landing}/preview', 'preview')->name('preview');
         Route::post('/{landing}/publish', 'publish')->name('publish');
+        Route::post('/{landing}/wedding', 'wedding')->name('wedding');
         Route::post('/{landing}/unpublish', 'unpublish')->name('unpublish');
         Route::post('/{landing}/video', [AdminController::class, 'uploadLandingVideo'])->middleware('throttle:20,1')->name('video');
         Route::get('/{landing}/leads', 'leads')->name('leads');

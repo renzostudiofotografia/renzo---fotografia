@@ -75,6 +75,8 @@ class LandingMediaTest extends TestCase
             'testimonials' => [[
                 'name' => 'Cliente de prueba', 'quote' => 'Opinión utilizada únicamente para verificar la vista.',
                 'image' => 'assets/images/portfolio/sofia-gabriel.webp', 'role' => 'Sesión de prueba',
+                'location' => '', 'date' => '', 'rating' => 0, 'review_url' => '', 'enabled' => true,
+                'media_type' => 'image', 'video_url' => '', 'video_poster' => '',
             ]],
         ]);
         if (! collect($data['sections'])->contains('type', 'testimonials')) {
@@ -131,7 +133,10 @@ class LandingMediaTest extends TestCase
         $video = $videos->item(0);
         $this->assertSame('https://media.example.test/presentacion.mp4', $video->getAttribute('src'));
         $this->assertSame(asset('assets/images/hero/hero-02.webp'), $video->getAttribute('poster'));
-        $this->assertTrue($video->hasAttribute('controls'));
+        $this->assertFalse($video->hasAttribute('controls'));
+        $this->assertStringContainsString('nodownload', $video->getAttribute('controlslist'));
+        $this->assertCount(1, $xpath->query('//*[@data-video-toggle]'));
+        $this->assertCount(1, $xpath->query('//*[@data-video-restart]'));
         $this->assertTrue($video->hasAttribute('playsinline'));
         $this->assertFalse($video->hasAttribute('autoplay'));
         $this->assertSame(asset('assets/images/portfolio/valentina-alejandro.webp'), $xpath->query('//meta[@property="og:image"]')->item(0)->getAttribute('content'));
